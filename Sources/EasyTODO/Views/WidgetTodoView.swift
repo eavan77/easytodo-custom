@@ -5,29 +5,32 @@ import SwiftUI
 
 struct WidgetRootView: View {
     @State private var visibility = WidgetWindowManager.shared.hoverState.visibility
+    @State private var corner = WidgetWindowManager.shared.corner
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
+        ZStack(alignment: corner.alignment) {
             if visibility != .expanded {
                 Button {
                     WidgetWindowManager.shared.pointerEntered()
                 } label: {
-                    PremiumLauncherView()
+                    SimpleLauncherView()
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Open EasyTODO tasks")
                 .modifier(WidgetGlassSurface(cornerRadius: 20, compact: true))
-                .transition(.opacity.combined(with: .scale(scale: 0.72, anchor: .topTrailing)))
+                .overlay { WidgetDragHandle(expandOnClick: true) }
+                .transition(.opacity.combined(with: .scale(scale: 0.72, anchor: corner.unitPoint)))
             } else {
                 WidgetTodoView()
-                    .transition(.opacity.combined(with: .scale(scale: 0.78, anchor: .topTrailing)))
+                    .transition(.opacity.combined(with: .scale(scale: 0.78, anchor: corner.unitPoint)))
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: corner.alignment)
         .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.88), value: visibility)
         .onReceive(NotificationCenter.default.publisher(for: .easyTODOWidgetPresentationChanged)) { notification in
             if let newVisibility = notification.object as? WidgetHoverState.Visibility { visibility = newVisibility }
+            corner = WidgetWindowManager.shared.corner
         }
     }
 }
@@ -77,7 +80,7 @@ struct WidgetTodoView: View {
 
     private var header: some View {
         HStack(spacing: 8) {
-            WidgetDragHandle()
+            WidgetDragHandle(expandOnClick: false)
                 .frame(width: 24, height: 18)
                 .help("Drag widget")
                 .accessibilityLabel("Drag widget")
@@ -198,74 +201,25 @@ struct WidgetTodoView: View {
     private var preferredColorScheme: ColorScheme? { (ThemeOption(rawValue: theme) ?? .light) == .light ? .light : .dark }
 }
 
-private struct PremiumLauncherView: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var sheenOffset: CGFloat = -58
-
+private struct SimpleLauncherView: View {
     var body: some View {
         ZStack {
             Circle()
-                .fill(
-                    LinearGradient(
-                        colors: [Color(white: 0.24), Color(white: 0.075), Color.black.opacity(0.96)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-
-            Circle()
-                .fill(
-                    LinearGradient(
-                        colors: [.white.opacity(0.22), .clear, .black.opacity(0.26)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                .padding(1)
+                .fill(.white.opacity(0.10))
 
             Image(systemName: "checklist.checked")
                 .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [.white, Color(white: 0.66)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                .shadow(color: .black.opacity(0.7), radius: 1, y: 1)
-
-            LinearGradient(
-                colors: [.clear, .white.opacity(0.02), .white.opacity(0.34), .white.opacity(0.02), .clear],
-                startPoint: .leading,
-                endPoint: .trailing
-            )
-            .frame(width: 15, height: 58)
-            .rotationEffect(.degrees(18))
-            .offset(x: sheenOffset)
-            .blendMode(.screen)
+                .foregroundStyle(.primary)
         }
         .overlay {
             Circle()
-                .stroke(
-                    LinearGradient(colors: [.white.opacity(0.48), .white.opacity(0.08), .black.opacity(0.65)], startPoint: .topLeading, endPoint: .bottomTrailing),
-                    lineWidth: 0.8
-                )
-        }
-        .overlay {
-            Circle()
-                .stroke(Color(red: 1.0, green: 0.73, blue: 0.82).opacity(0.98), lineWidth: 1.6)
-                .shadow(color: Color(red: 1.0, green: 0.68, blue: 0.79).opacity(0.62), radius: 2.5)
+                .stroke(Color(red: 1.0, green: 0.76, blue: 0.84).opacity(0.92), lineWidth: 1.25)
+                .shadow(color: Color(red: 1.0, green: 0.74, blue: 0.83).opacity(0.34), radius: 1.5)
                 .padding(1)
         }
         .clipShape(Circle())
         .frame(width: 40, height: 40)
         .contentShape(Circle())
-        .onAppear {
-            guard !reduceMotion else { return }
-            withAnimation(.linear(duration: 1.0).delay(3.2).repeatForever(autoreverses: false)) {
-                sheenOffset = 58
-            }
-        }
     }
 }
 
@@ -301,19 +255,42 @@ private struct WidgetGlassSurface: ViewModifier {
 }
 
 private struct WidgetDragHandle: NSViewRepresentable {
-    func makeNSView(context: Context) -> WidgetDragHandleNSView { WidgetDragHandleNSView() }
-    func updateNSView(_ nsView: WidgetDragHandleNSView, context: Context) {}
+    let expandOnClick: Bool
+
+    func makeNSView(context: Context) -> WidgetDragHandleNSView {
+        WidgetDragHandleNSView(expandOnClick: expandOnClick)
+    }
+
+    func updateNSView(_ nsView: WidgetDragHandleNSView, context: Context) {
+        nsView.expandOnClick = expandOnClick
+    }
 }
 
 private final class WidgetDragHandleNSView: NSView {
+    var expandOnClick: Bool
+
+    init(expandOnClick: Bool) {
+        self.expandOnClick = expandOnClick
+        super.init(frame: .zero)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
     override func mouseDown(with event: NSEvent) {
         guard let window else { return }
+        let start = NSEvent.mouseLocation
         WidgetWindowManager.shared.beginWidgetDrag()
         window.performDrag(with: event)
         WidgetWindowManager.shared.finishWidgetDrag()
+        let end = NSEvent.mouseLocation
+        if expandOnClick, hypot(end.x - start.x, end.y - start.y) < 3 {
+            WidgetWindowManager.shared.pointerEntered()
+        }
     }
 
     override func draw(_ dirtyRect: NSRect) {
+        guard !expandOnClick else { return }
         let bar = NSBezierPath(roundedRect: NSRect(x: 4, y: bounds.midY - 1, width: max(8, bounds.width - 8), height: 2), xRadius: 1, yRadius: 1)
         NSColor.secondaryLabelColor.withAlphaComponent(0.42).setFill()
         bar.fill()
@@ -321,4 +298,24 @@ private final class WidgetDragHandleNSView: NSView {
 
     override func accessibilityRole() -> NSAccessibility.Role? { .handle }
     override func accessibilityLabel() -> String? { "Drag widget" }
+}
+
+private extension WidgetCorner {
+    var alignment: Alignment {
+        switch self {
+        case .topLeft: .topLeading
+        case .topRight: .topTrailing
+        case .bottomLeft: .bottomLeading
+        case .bottomRight: .bottomTrailing
+        }
+    }
+
+    var unitPoint: UnitPoint {
+        switch self {
+        case .topLeft: .topLeading
+        case .topRight: .topTrailing
+        case .bottomLeft: .bottomLeading
+        case .bottomRight: .bottomTrailing
+        }
+    }
 }

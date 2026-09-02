@@ -216,53 +216,72 @@ final class EasyTODOTests: XCTestCase {
         XCTAssertEqual(state.interactionLockCount, 0)
     }
 
-    func testLauncherAndExpandedFramesShareStableTopRightAnchor() {
-        let visible = CGRect(x: 100, y: 50, width: 1440, height: 900)
-        let launcher = WidgetPanelGeometry.topRightFrame(size: CGSize(width: 40, height: 40), visibleFrame: visible, inset: 16)
-        let expanded = WidgetPanelGeometry.topRightFrame(size: CGSize(width: 276, height: 350), visibleFrame: visible, inset: 16)
-
-        XCTAssertEqual(launcher.maxX, expanded.maxX)
-        XCTAssertEqual(launcher.maxY, expanded.maxY)
-        XCTAssertEqual(launcher.size, CGSize(width: 40, height: 40))
-        XCTAssertEqual(expanded.size, CGSize(width: 276, height: 350))
-        XCTAssertEqual(WidgetPanelGeometry.topRightFrame(size: launcher.size, visibleFrame: visible, inset: 16), launcher)
+    func testQuadrantDetectionMapsEveryScreenQuadrantToCorner() {
+        let visible = CGRect(x: 100, y: 50, width: 1000, height: 700)
+        XCTAssertEqual(WidgetCorner.quadrant(containing: CGPoint(x: 200, y: 700), in: visible), .topLeft)
+        XCTAssertEqual(WidgetCorner.quadrant(containing: CGPoint(x: 1000, y: 700), in: visible), .topRight)
+        XCTAssertEqual(WidgetCorner.quadrant(containing: CGPoint(x: 200, y: 100), in: visible), .bottomLeft)
+        XCTAssertEqual(WidgetCorner.quadrant(containing: CGPoint(x: 1000, y: 100), in: visible), .bottomRight)
     }
 
-    func testMovedWidgetFramesKeepTheSameTopRightAnchorAcrossCycles() {
-        let anchor = CGPoint(x: 920, y: 710)
-        let launcherSize = CGSize(width: 40, height: 40)
-        let expandedSize = CGSize(width: 276, height: 350)
-
-        let expanded = WidgetPanelGeometry.frame(size: expandedSize, topRightAnchor: anchor)
-        let launcher = WidgetPanelGeometry.frame(size: launcherSize, topRightAnchor: WidgetPanelGeometry.topRightAnchor(for: expanded))
-        let expandedAgain = WidgetPanelGeometry.frame(size: expandedSize, topRightAnchor: WidgetPanelGeometry.topRightAnchor(for: launcher))
-
-        XCTAssertEqual(WidgetPanelGeometry.topRightAnchor(for: launcher), anchor)
-        XCTAssertEqual(expandedAgain, expanded)
-    }
-
-    func testWidgetAnchorClampsExpandedFrameInsideVisibleScreen() {
+    func testEveryCornerProducesCorrectExpandedGeometryInsideVisibleFrame() {
         let visible = CGRect(x: 100, y: 50, width: 1000, height: 700)
         let size = CGSize(width: 276, height: 350)
+        let inset: CGFloat = 16
 
-        let low = WidgetPanelGeometry.clampedTopRightAnchor(CGPoint(x: -500, y: -500), expandedSize: size, visibleFrame: visible)
-        let high = WidgetPanelGeometry.clampedTopRightAnchor(CGPoint(x: 5000, y: 5000), expandedSize: size, visibleFrame: visible)
+        let topLeft = WidgetPanelGeometry.frame(size: size, corner: .topLeft, visibleFrame: visible, inset: inset)
+        let topRight = WidgetPanelGeometry.frame(size: size, corner: .topRight, visibleFrame: visible, inset: inset)
+        let bottomLeft = WidgetPanelGeometry.frame(size: size, corner: .bottomLeft, visibleFrame: visible, inset: inset)
+        let bottomRight = WidgetPanelGeometry.frame(size: size, corner: .bottomRight, visibleFrame: visible, inset: inset)
 
-        XCTAssertEqual(WidgetPanelGeometry.frame(size: size, topRightAnchor: low).minX, visible.minX)
-        XCTAssertEqual(WidgetPanelGeometry.frame(size: size, topRightAnchor: low).minY, visible.minY)
-        XCTAssertEqual(WidgetPanelGeometry.frame(size: size, topRightAnchor: high).maxX, visible.maxX)
-        XCTAssertEqual(WidgetPanelGeometry.frame(size: size, topRightAnchor: high).maxY, visible.maxY)
+        XCTAssertEqual(topLeft.minX, visible.minX + inset)
+        XCTAssertEqual(topLeft.maxY, visible.maxY - inset)
+        XCTAssertEqual(topRight.maxX, visible.maxX - inset)
+        XCTAssertEqual(topRight.maxY, visible.maxY - inset)
+        XCTAssertEqual(bottomLeft.minX, visible.minX + inset)
+        XCTAssertEqual(bottomLeft.minY, visible.minY + inset)
+        XCTAssertEqual(bottomRight.maxX, visible.maxX - inset)
+        XCTAssertEqual(bottomRight.minY, visible.minY + inset)
+        for corner in WidgetCorner.allCases {
+            XCTAssertTrue(visible.contains(WidgetPanelGeometry.frame(size: size, corner: corner, visibleFrame: visible, inset: inset)))
+        }
     }
 
-    func testWidgetPositionStoreRoundTripsSavedAnchor() throws {
-        let suiteName = "EasyTODOTests.WidgetPositionStore.\(UUID().uuidString)"
+    func testCollapseAndExpansionPreserveSelectedCornerWithoutDrift() {
+        let visible = CGRect(x: 0, y: 0, width: 1200, height: 800)
+        for corner in WidgetCorner.allCases {
+            let launcher = WidgetPanelGeometry.frame(size: CGSize(width: 40, height: 40), corner: corner, visibleFrame: visible, inset: 16)
+            let expanded = WidgetPanelGeometry.frame(size: CGSize(width: 276, height: 350), corner: corner, visibleFrame: visible, inset: 16)
+            let launcherAgain = WidgetPanelGeometry.frame(size: CGSize(width: 40, height: 40), corner: corner, visibleFrame: visible, inset: 16)
+            XCTAssertEqual(launcherAgain, launcher)
+            XCTAssertTrue(visible.contains(expanded))
+        }
+    }
+
+    func testWidgetCornerStoreRoundTripsPersistedCorner() throws {
+        let suiteName = "EasyTODOTests.WidgetCornerStore.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
-        let store = WidgetPositionStore(defaults: defaults)
+        let store = WidgetCornerStore(defaults: defaults)
 
         XCTAssertNil(store.load())
-        store.save(CGPoint(x: 812.5, y: 644.25))
-        XCTAssertEqual(store.load(), CGPoint(x: 812.5, y: 644.25))
+        store.save(.bottomLeft)
+        XCTAssertEqual(store.load(), .bottomLeft)
+    }
+
+    func testRestoredCornerControlsLauncherFrameAfterShowOrRelaunch() throws {
+        let suiteName = "EasyTODOTests.RestoredWidgetCorner.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = WidgetCornerStore(defaults: defaults)
+        let visible = CGRect(x: 80, y: 30, width: 1200, height: 800)
+        store.save(.bottomRight)
+
+        let restored = try XCTUnwrap(store.load())
+        let launcher = WidgetPanelGeometry.frame(size: CGSize(width: 40, height: 40), corner: restored, visibleFrame: visible, inset: 16)
+
+        XCTAssertEqual(launcher.maxX, visible.maxX - 16)
+        XCTAssertEqual(launcher.minY, visible.minY + 16)
     }
 
     func testDragInteractionLockPreventsHoverCollapse() {

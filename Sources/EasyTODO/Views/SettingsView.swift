@@ -7,8 +7,6 @@ struct SettingsView: View {
     @AppStorage(EasyTODOSettings.hiddenDockIcon) private var hiddenDockIcon = false
     @AppStorage(EasyTODOSettings.transparency) private var transparency = 0.80
     @AppStorage(EasyTODOSettings.theme) private var theme = ThemeOption.light.rawValue
-    @AppStorage(EasyTODOSettings.widgetActiveOpacity) private var widgetActiveOpacity = 1.0
-    @AppStorage(EasyTODOSettings.widgetInactiveOpacity) private var widgetInactiveOpacity = 0.08
 
     @State private var loginItemMessage: String?
 
@@ -40,14 +38,6 @@ struct SettingsView: View {
                 }
                 .pickerStyle(.segmented)
 
-                LabeledContent("Active widget") {
-                    Slider(value: $widgetActiveOpacity, in: 0.60...1.0, step: 0.05)
-                    Text(widgetActiveOpacity, format: .percent.precision(.fractionLength(0))).monospacedDigit()
-                }
-                LabeledContent("Inactive widget") {
-                    Slider(value: $widgetInactiveOpacity, in: 0.05...0.50, step: 0.01)
-                    Text(widgetInactiveOpacity, format: .percent.precision(.fractionLength(0))).monospacedDigit()
-                }
             }
 
             Section("Theme") {
@@ -71,8 +61,6 @@ struct SettingsView: View {
         .onChange(of: transparency) { _, _ in
             WindowManager.shared.applyWindowSettings()
         }
-        .onChange(of: widgetActiveOpacity) { _, _ in WidgetWindowManager.shared.applyWidgetTransparency() }
-        .onChange(of: widgetInactiveOpacity) { _, _ in WidgetWindowManager.shared.applyWidgetTransparency() }
         .onChange(of: showMenuBar) { _, newValue in
             if !newValue {
                 hiddenDockIcon = false

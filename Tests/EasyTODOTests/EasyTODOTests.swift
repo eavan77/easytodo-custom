@@ -151,22 +151,69 @@ final class EasyTODOTests: XCTestCase {
                        ["Today", "Tomorrow", "Next week", "Whenever"])
     }
 
-    func testWidgetOpacityPolicyAllowsVeryLowInactiveOpacity() {
-        XCTAssertEqual(WidgetOpacityPolicy.defaultActive, 1.0)
-        XCTAssertEqual(WidgetOpacityPolicy.defaultInactive, 0.08, accuracy: 0.001)
-        XCTAssertEqual(WidgetOpacityPolicy.clampedInactive(0.05), 0.05, accuracy: 0.001)
-        XCTAssertEqual(WidgetOpacityPolicy.clampedInactive(0.01), 0.05, accuracy: 0.001)
-        XCTAssertEqual(WidgetOpacityPolicy.clampedActive(0.40), 0.60, accuracy: 0.001)
+    func testHiddenWidgetShowRestoresCollapsedLauncher() {
+        var state = WidgetHoverState()
+        state.hide()
+        state.show()
+        XCTAssertEqual(state.visibility, .launcher)
     }
 
-    func testWidgetPresentationStateSupportsThreeDistinctStates() {
-        var state = WidgetPresentationState.expanded
-        state.collapse()
-        XCTAssertEqual(state, .collapsed)
+    func testLauncherPointerEntryExpandsAndExpandedEntryStaysExpanded() {
+        var state = WidgetHoverState()
+        state.show()
+        state.pointerEntered()
+        XCTAssertEqual(state.visibility, .expanded)
+        state.pointerEntered()
+        XCTAssertEqual(state.visibility, .expanded)
+    }
+
+    func testPointerExitSchedulesCollapseAndReentryCancelsIt() {
+        var state = WidgetHoverState()
+        state.show()
+        state.pointerEntered()
+        state.pointerExited()
+        XCTAssertTrue(state.isCollapsePending)
+        state.pointerEntered()
+        XCTAssertFalse(state.isCollapsePending)
+        state.collapseGracePeriodCompleted()
+        XCTAssertEqual(state.visibility, .expanded)
+    }
+
+    func testGraceCompletionCollapsesExpandedWidget() {
+        var state = WidgetHoverState()
+        state.show()
+        state.pointerEntered()
+        state.pointerExited()
+        state.collapseGracePeriodCompleted()
+        XCTAssertEqual(state.visibility, .launcher)
+    }
+
+    func testInteractionLockPreventsCollapseUntilReleasedOutside() {
+        var state = WidgetHoverState()
+        state.show()
+        state.pointerEntered()
+        state.beginInteraction()
+        state.pointerExited()
+        state.collapseGracePeriodCompleted()
+        XCTAssertEqual(state.visibility, .expanded)
+        XCTAssertFalse(state.isCollapsePending)
+
+        state.endInteraction()
+        XCTAssertTrue(state.isCollapsePending)
+        state.collapseGracePeriodCompleted()
+        XCTAssertEqual(state.visibility, .launcher)
+    }
+
+    func testHideAndShowWidgetNeverLeavesExpandedStateStuck() {
+        var state = WidgetHoverState()
+        state.show()
+        state.pointerEntered()
         state.hide()
-        XCTAssertEqual(state, .hidden)
-        state.expand()
-        XCTAssertEqual(state, .expanded)
+        XCTAssertEqual(state.visibility, .hidden)
+        state.show()
+        XCTAssertEqual(state.visibility, .launcher)
+        XCTAssertFalse(state.isCollapsePending)
+        XCTAssertEqual(state.interactionLockCount, 0)
     }
 
     func testDateOnlyDeadlineUsesEndOfLocalDay() throws {

@@ -7,7 +7,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         MenuBarManager.shared.applicationDidFinishLaunching()
         GlobalShortcutManager.shared.registerQuickAddShortcut()
         WindowManager.shared.applyActivationPolicy()
-        NSApp.activate(ignoringOtherApps: true)
+        WindowManager.shared.prepareLauncherFirstStartup()
+        WidgetWindowManager.shared.showWidget()
     }
 
     func applicationWillTerminate(_ notification: Notification) {

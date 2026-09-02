@@ -69,7 +69,7 @@ Most todo apps make a simple thought feel like admin work: open a tab, pick a wo
 - Toggle completion directly from the menu bar popover without opening the full app.
 - Open a draggable desktop widget from the app menu, menu bar popover, or main window context menu.
 - The widget floats above other apps, joins all Spaces, filters by category, and opens the full app on double-click.
-- It uses full opacity while EasyTODO is active and smoothly recedes to a configurable inactive opacity when another app is active.
+- A fixed top-right glass launcher expands automatically on hover and collapses after a short pointer-exit grace period.
 - macOS 26 uses native Liquid Glass; macOS 14 and 15 use native ultra-thin material.
 
 ### Window Control and Persistence
@@ -118,7 +118,7 @@ swift run EasyTODO
 4. Check a task to complete it; use the history button in the main window to restore it.
 5. Use the tag button in the main window to manage categories.
 6. Open the floating widget from the app menu, menu bar popover, or main-window context menu.
-7. Open Settings to adjust active/inactive widget opacity, launch, menu bar, window, and theme options.
+7. Open Settings to manage launch, menu bar, main-window transparency, and theme options.
 
 ## Keyboard Shortcuts
 
@@ -140,8 +140,6 @@ swift run EasyTODO
 | Show in Menu Bar | On / Off |
 | Hide Dock Icon | On / Off when menu bar is enabled |
 | Transparency | 100%, 80%, 50% |
-| Active Widget Opacity | 60%–100% (default 100%) |
-| Inactive Widget Opacity | 5%–50% (default 8%) |
 | Theme | Light, Dark |
 
 ## Personal-use App and DMG
@@ -188,6 +186,7 @@ Reverse chronological history, based on Git commits.
 
 | Commit | Tag | Notes |
 | --- | --- | --- |
+| `pending` | ![feature](https://img.shields.io/badge/-feature-2da44e?style=flat-square) | Made the fixed top-right hover launcher the default startup interface with interaction-safe automatic expansion and collapse. |
 | `pending` | ![feature](https://img.shields.io/badge/-feature-2da44e?style=flat-square) | Reworked the main window as a global urgency list, added detailed creation, low-opacity inactive mode, neutral glass styling, and a collapsible floating control. |
 | `pending` | ![fix](https://img.shields.io/badge/-fix-c93c37?style=flat-square) | Deferred menu bar UI creation until AppKit finishes launching and hardened package signing against copied extended attributes. |
 | `pending` | ![feature](https://img.shields.io/badge/-feature-2da44e?style=flat-square) | Added the urgency-ordered floating widget, date/time deadlines, categories, completion history, adaptive opacity, and native Liquid Glass fallback. |

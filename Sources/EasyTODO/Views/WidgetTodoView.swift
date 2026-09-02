@@ -3,28 +3,28 @@ import SwiftData
 import SwiftUI
 
 struct WidgetRootView: View {
-    @State private var state = WidgetWindowManager.shared.presentationState
+    @State private var visibility = WidgetWindowManager.shared.hoverState.visibility
 
     var body: some View {
         Group {
-            if state == .collapsed {
+            if visibility != .expanded {
                 Button {
-                    WidgetWindowManager.shared.expandWidget()
+                    WidgetWindowManager.shared.pointerEntered()
                 } label: {
                     Image(systemName: "checklist")
-                        .font(.system(size: 20, weight: .semibold))
-                        .frame(width: 50, height: 50)
-                        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .font(.system(size: 17, weight: .semibold))
+                        .frame(width: 40, height: 40)
+                        .contentShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Expand EasyTODO widget")
-                .modifier(WidgetGlassSurface(cornerRadius: 16))
+                .accessibilityLabel("Open EasyTODO tasks")
+                .modifier(WidgetGlassSurface(cornerRadius: 13, compact: true))
             } else {
                 WidgetTodoView()
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .easyTODOWidgetPresentationChanged)) { notification in
-            if let newState = notification.object as? WidgetPresentationState { state = newState }
+            if let newVisibility = notification.object as? WidgetHoverState.Visibility { visibility = newVisibility }
         }
     }
 }
@@ -39,6 +39,7 @@ struct WidgetTodoView: View {
     @State private var newTaskTitle = ""
     @State private var editingTask: TodoTask?
     @State private var isCreatingTask = false
+    @FocusState private var quickAddFocused: Bool
 
     private var filter: TaskCategoryFilter { TaskCategoryFilter(storedValue: storedFilter) }
     private var visibleTasks: [TodoTask] { TaskUrgencyOrdering.visibleTasks(from: tasks, filter: filter) }
@@ -55,8 +56,19 @@ struct WidgetTodoView: View {
         .modifier(WidgetGlassSurface(cornerRadius: 20))
         .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .onTapGesture(count: 2) { WindowManager.shared.showMainWindow() }
-        .sheet(item: $editingTask) { TaskEditorView(task: $0) }
-        .sheet(isPresented: $isCreatingTask) { TaskCreationView(initialCategoryID: selectedCategoryID) }
+        .sheet(item: $editingTask) { task in
+            TaskEditorView(task: task)
+                .onAppear { WidgetWindowManager.shared.beginChildInteraction() }
+                .onDisappear { WidgetWindowManager.shared.endChildInteraction() }
+        }
+        .sheet(isPresented: $isCreatingTask) {
+            TaskCreationView(initialCategoryID: selectedCategoryID)
+                .onAppear { WidgetWindowManager.shared.beginChildInteraction() }
+                .onDisappear { WidgetWindowManager.shared.endChildInteraction() }
+        }
+        .onChange(of: quickAddFocused) { _, focused in
+            focused ? WidgetWindowManager.shared.beginChildInteraction() : WidgetWindowManager.shared.endChildInteraction()
+        }
         .preferredColorScheme(preferredColorScheme)
     }
 
@@ -70,17 +82,16 @@ struct WidgetTodoView: View {
                 ForEach(categories) { Text($0.name).tag($0.id.uuidString) }
             }
             .labelsHidden().frame(maxWidth: 128).accessibilityLabel("Filter by category")
-            Button { WidgetWindowManager.shared.collapseWidget() } label: {
-                Image(systemName: "minus").frame(width: 22, height: 22).contentShape(Rectangle())
-            }
-            .buttonStyle(.plain).help("Collapse widget").accessibilityLabel("Collapse widget")
         }
     }
 
     private var quickAdd: some View {
         HStack(spacing: 7) {
             Image(systemName: "plus.circle.fill").foregroundStyle(.secondary)
-            TextField("Add a task", text: $newTaskTitle).textFieldStyle(.plain).onSubmit(addTask)
+            TextField("Add a task", text: $newTaskTitle)
+                .textFieldStyle(.plain)
+                .focused($quickAddFocused)
+                .onSubmit { addTask(); quickAddFocused = false }
             Button { isCreatingTask = true } label: {
                 Image(systemName: "slider.horizontal.3")
             }
@@ -160,10 +171,12 @@ struct WidgetTodoView: View {
 
 private struct WidgetGlassSurface: ViewModifier {
     let cornerRadius: CGFloat
+    var compact = false
 
     func body(content: Content) -> some View {
         if #available(macOS 26.0, *) {
-            content.glassEffect(.regular, in: .rect(cornerRadius: cornerRadius)).shadow(color: .black.opacity(0.12), radius: 16, y: 7)
+            content.glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
+                .shadow(color: .black.opacity(compact ? 0.08 : 0.12), radius: compact ? 5 : 16, y: compact ? 2 : 7)
         } else {
             content
                 .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
@@ -171,7 +184,7 @@ private struct WidgetGlassSurface: ViewModifier {
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                         .strokeBorder(.primary.opacity(0.12), lineWidth: 0.75)
                 }
-                .shadow(color: .black.opacity(0.14), radius: 14, y: 6)
+                .shadow(color: .black.opacity(compact ? 0.08 : 0.14), radius: compact ? 5 : 14, y: compact ? 2 : 6)
         }
     }
 }

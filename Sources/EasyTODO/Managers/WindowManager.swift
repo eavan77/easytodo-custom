@@ -5,6 +5,7 @@ final class WindowManager: ObservableObject {
     static let shared = WindowManager()
 
     private var mainWindow: NSWindow?
+    private var suppressMainWindowForLauncherStartup = true
 
     private init() {}
 
@@ -38,6 +39,10 @@ final class WindowManager: ObservableObject {
         }
 
         applyWindowSettings()
+
+        if suppressMainWindowForLauncherStartup {
+            window.orderOut(nil)
+        }
     }
 
     private func hideNativeWindowControls(in window: NSWindow) {
@@ -67,6 +72,7 @@ final class WindowManager: ObservableObject {
     }
 
     func showMainWindow() {
+        suppressMainWindowForLauncherStartup = false
         if let window = mainWindow {
             if window.isMiniaturized {
                 window.deminiaturize(nil)
@@ -80,6 +86,11 @@ final class WindowManager: ObservableObject {
     }
 
     func closeMainWindow() {
+        mainWindow?.orderOut(nil)
+    }
+
+    func prepareLauncherFirstStartup() {
+        suppressMainWindowForLauncherStartup = true
         mainWindow?.orderOut(nil)
     }
 

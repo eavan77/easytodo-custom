@@ -216,6 +216,13 @@ final class EasyTODOTests: XCTestCase {
         XCTAssertEqual(state.interactionLockCount, 0)
     }
 
+    func testRepeatedShowRequestsCreateOnlyOnePanel() {
+        var ownership = WidgetPanelOwnershipState()
+        XCTAssertTrue(ownership.requestCreation())
+        XCTAssertFalse(ownership.requestCreation())
+        XCTAssertFalse(ownership.requestCreation())
+    }
+
     func testQuadrantDetectionMapsEveryScreenQuadrantToCorner() {
         let visible = CGRect(x: 100, y: 50, width: 1000, height: 700)
         XCTAssertEqual(WidgetCorner.quadrant(containing: CGPoint(x: 200, y: 700), in: visible), .topLeft)

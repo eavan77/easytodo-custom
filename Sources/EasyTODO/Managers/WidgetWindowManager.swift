@@ -13,6 +13,7 @@ final class WidgetWindowManager {
     private var pendingVisualCollapse: DispatchWorkItem?
     private var pendingExpansion: DispatchWorkItem?
     private var menuObservers: [NSObjectProtocol] = []
+    private var panelOwnership = WidgetPanelOwnershipState()
     private(set) var hoverState = WidgetHoverState()
     private(set) var corner: WidgetCorner
     private let cornerStore: WidgetCornerStore
@@ -51,11 +52,16 @@ final class WidgetWindowManager {
             return
         }
 
-        if widgetWindow == nil {
+        if widgetWindow == nil, panelOwnership.requestCreation() {
             createPanel(modelContainer: modelContainer)
         }
 
         guard let panel = widgetWindow else { return }
+        assert(NSApp.windows.filter { $0.identifier?.rawValue == "easy-todo-widget-window" }.count <= 1)
+        if hoverState.visibility != .hidden {
+            panel.orderFrontRegardless()
+            return
+        }
         cancelPendingCollapse()
         cancelPendingVisualCollapse()
         cancelPendingExpansion()
@@ -114,18 +120,85 @@ final class WidgetWindowManager {
             endChildInteraction()
             return
         }
+        snapDraggedPanel(panel, animated: true) { [weak self] in
+            self?.endChildInteraction()
+        }
+    }
+
+    private func snapDraggedPanel(_ panel: NSPanel, animated: Bool, completion: (@MainActor @Sendable () -> Void)? = nil) {
         let screen = screenContainingCenter(of: panel.frame)
         corner = WidgetCorner.quadrant(containing: CGPoint(x: panel.frame.midX, y: panel.frame.midY), in: screen.visibleFrame)
         cornerStore.save(corner)
         notifyPresentationChanged()
         let target = frame(for: hoverState.visibility, on: screen)
+        guard animated else {
+            panel.setFrame(target, display: true, animate: false)
+            assert(panel.frame.equalTo(target))
+            completion?()
+            return
+        }
         NSAnimationContext.runAnimationGroup { context in
             context.duration = snapDuration
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             panel.animator().setFrame(target, display: true)
-        } completionHandler: { [weak self] in
-            Task { @MainActor in self?.endChildInteraction() }
+        } completionHandler: {
+            Task { @MainActor in
+                assert(panel.frame.equalTo(target))
+                completion?()
+            }
         }
+    }
+
+    /// Exercises the production drag-end snap path against the real NSPanel.
+    /// Intended for logged-in desktop validation when synthetic pointer input
+    /// is unavailable. The final persisted state is bottom-left.
+    func runCornerDiagnostics() {
+        showWidget()
+        showWidget()
+        showWidget()
+        guard let panel = widgetWindow else { return }
+        let screen = panel.screen ?? preferredScreen()
+        let visible = screen.visibleFrame
+        let panelCount = NSApp.windows.filter { $0.identifier?.rawValue == "easy-todo-widget-window" }.count
+        NSLog("EasyTODO diagnostics panelCount=\(panelCount)")
+
+        diagnoseCorners(panel: panel, visibleFrame: visible, visibility: .launcher)
+        hoverState.pointerEntered()
+        applyGeometry(panel, visibility: .expanded, notify: true)
+        diagnoseCorners(panel: panel, visibleFrame: visible, visibility: .expanded)
+
+        move(panel, toQuadrantFor: .bottomRight, visibleFrame: visible)
+        snapDraggedPanel(panel, animated: false)
+        hideWidget()
+        showWidget()
+        let showTarget = frame(for: .launcher, on: screen)
+        NSLog("EasyTODO diagnostics hideShow corner=\(corner.rawValue) frame=\(NSStringFromRect(panel.frame)) expected=\(NSStringFromRect(showTarget)) pass=\(panel.frame.equalTo(showTarget))")
+
+        move(panel, toQuadrantFor: .bottomLeft, visibleFrame: visible)
+        snapDraggedPanel(panel, animated: false)
+        NSLog("EasyTODO diagnostics persistedCorner=\(corner.rawValue)")
+    }
+
+    private func diagnoseCorners(panel: NSPanel, visibleFrame: NSRect, visibility: WidgetHoverState.Visibility) {
+        for testedCorner in WidgetCorner.allCases {
+            move(panel, toQuadrantFor: testedCorner, visibleFrame: visibleFrame)
+            snapDraggedPanel(panel, animated: false)
+            let expected = WidgetPanelGeometry.frame(
+                size: visibility == .expanded ? expandedSize : launcherSize,
+                corner: testedCorner,
+                visibleFrame: visibleFrame,
+                inset: edgeInset
+            )
+            NSLog("EasyTODO diagnostics mode=\(visibility) corner=\(testedCorner.rawValue) frame=\(NSStringFromRect(panel.frame)) expected=\(NSStringFromRect(expected)) pass=\(panel.frame.equalTo(expected))")
+        }
+    }
+
+    private func move(_ panel: NSPanel, toQuadrantFor corner: WidgetCorner, visibleFrame: NSRect) {
+        let center = CGPoint(
+            x: corner == .topLeft || corner == .bottomLeft ? visibleFrame.minX + visibleFrame.width * 0.25 : visibleFrame.minX + visibleFrame.width * 0.75,
+            y: corner == .topLeft || corner == .topRight ? visibleFrame.minY + visibleFrame.height * 0.75 : visibleFrame.minY + visibleFrame.height * 0.25
+        )
+        panel.setFrameOrigin(CGPoint(x: center.x - panel.frame.width / 2, y: center.y - panel.frame.height / 2))
     }
 
     fileprivate func activateForInteraction() {

@@ -153,7 +153,7 @@ struct MenuBarTodoView: View {
             } label: {
                 HStack {
                     Circle()
-                        .fill(task.priority.color)
+                        .fill(task.category?.color.swiftUIColor ?? Color.secondary.opacity(0.25))
                         .frame(width: 8, height: 8)
 
                     Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle")
@@ -197,7 +197,7 @@ struct MenuBarTodoView: View {
 
     private func toggleCompletion(for task: TodoTask) {
         let wasCompleted = task.isCompleted
-        task.isCompleted.toggle()
+        task.setCompleted(!task.isCompleted)
 
         if !wasCompleted && task.isCompleted {
             TaskListOrdering.moveCompletedTaskToFront(task, in: todayTasks)

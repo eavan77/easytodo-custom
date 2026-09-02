@@ -4,252 +4,130 @@ import SwiftUI
 
 struct WidgetTodoView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query(sort: [
-        SortDescriptor(\TodoTask.sortOrder),
-        SortDescriptor(\TodoTask.createdAt)
-    ]) private var tasks: [TodoTask]
-
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Query private var tasks: [TodoTask]
+    @Query(sort: \TaskCategory.sortOrder) private var categories: [TaskCategory]
     @AppStorage(EasyTODOSettings.theme) private var theme = ThemeOption.light.rawValue
-    @AppStorage(EasyTODOSettings.widgetTransparency) private var widgetTransparency = 0.80
+    @AppStorage(EasyTODOSettings.widgetCategoryFilter) private var storedFilter = "all"
+    @State private var newTaskTitle = ""
+    @State private var editingTask: TodoTask?
 
-    private let calendar = Calendar.current
-    private let dayRefreshTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
-
-    private var todayTasks: [TodoTask] {
-        tasks.filter { task in
-            task.isScheduled(on: .now, calendar: calendar)
-        }
+    private var filter: TaskCategoryFilter {
+        if storedFilter == "uncategorized" { return .uncategorized }
+        if let id = UUID(uuidString: storedFilter) { return .category(id) }
+        return .all
     }
-
-    private var orderedTasks: [TodoTask] {
-        TaskListOrdering.ordered(todayTasks)
-    }
-
-    private var activeCount: Int {
-        todayTasks.filter { !$0.isCompleted }.count
-    }
-
-    private var completedCount: Int {
-        todayTasks.filter(\.isCompleted).count
-    }
-
-    private var progress: Double {
-        guard !todayTasks.isEmpty else { return 0 }
-        return Double(completedCount) / Double(todayTasks.count)
-    }
+    private var visibleTasks: [TodoTask] { TaskUrgencyOrdering.visibleTasks(from: tasks, filter: filter) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             header
-            progressBar
-
-            if todayTasks.isEmpty {
-                emptyState
-            } else {
-                taskList
-            }
-
+            quickAdd
+            if visibleTasks.isEmpty { emptyState } else { taskList }
             footer
         }
-        .padding(14)
-        .frame(width: 236)
-        .background(widgetSurface)
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .strokeBorder(.white.opacity(0.12), lineWidth: 1)
-        }
-        .shadow(color: .black.opacity(0.10), radius: 18, x: 0, y: 10)
+        .padding(13).frame(width: 276)
+        .modifier(WidgetGlassSurface())
         .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .onTapGesture(count: 2) {
-            WindowManager.shared.showMainWindow()
-        }
-        .onAppear(perform: runDailyTaskMaintenance)
-        .onReceive(dayRefreshTimer) { _ in
-            runDailyTaskMaintenance()
-        }
+        .onTapGesture(count: 2) { WindowManager.shared.showMainWindow() }
+        .sheet(item: $editingTask) { TaskEditorView(task: $0) }
         .preferredColorScheme(preferredColorScheme)
     }
 
     private var header: some View {
-        HStack(alignment: .center, spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Today's TODOs")
-                    .font(.system(size: 13, weight: .semibold))
-
-                Text("\(activeCount) active - \(completedCount) done")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
-            }
-
+        HStack(spacing: 8) {
+            Label("Up Next", systemImage: "checklist").font(.system(size: 14, weight: .semibold))
             Spacer()
-
-            Text("\(completedCount)/\(todayTasks.count)")
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .padding(.horizontal, 9)
-                .padding(.vertical, 5)
-                .background(.primary.opacity(0.045), in: Capsule())
-        }
-    }
-
-    private var progressBar: some View {
-        GeometryReader { proxy in
-            ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(.primary.opacity(0.08))
-
-                Capsule()
-                    .fill(Color(red: 0.95, green: 0.64, blue: 0.22))
-                    .frame(width: proxy.size.width * progress)
+            Picker("Category", selection: $storedFilter) {
+                Text("All").tag("all")
+                Text("Uncategorized").tag("uncategorized")
+                ForEach(categories) { Text($0.name).tag($0.id.uuidString) }
             }
+            .labelsHidden().frame(maxWidth: 128).accessibilityLabel("Filter by category")
         }
-        .frame(height: 5)
-        .accessibilityLabel("Today progress")
-        .accessibilityValue("\(completedCount) of \(todayTasks.count) complete")
     }
 
-    private var emptyState: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Image(systemName: "sparkle")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(.secondary)
-
-            Text("Clear day")
-                .font(.system(size: 14, weight: .semibold))
-
-            Text("Double-click to open the full list.")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.secondary)
+    private var quickAdd: some View {
+        HStack(spacing: 7) {
+            Image(systemName: "plus.circle.fill").foregroundStyle(.secondary)
+            TextField("Add a task", text: $newTaskTitle).textFieldStyle(.plain).onSubmit(addTask)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 9).padding(.vertical, 7)
+        .background(.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
     }
 
     private var taskList: some View {
-        ScrollView(.vertical) {
-            LazyVStack(spacing: 7) {
-                ForEach(orderedTasks) { task in
-                    taskButton(for: task)
+        ScrollView {
+            LazyVStack(spacing: 6) {
+                ForEach(visibleTasks) { task in
+                    taskRow(task).transition(.opacity.combined(with: .scale(scale: 0.92)))
                 }
             }
-            .padding(.trailing, 4)
         }
-        .frame(maxHeight: 190)
-        .scrollIndicators(.visible)
+        .frame(maxHeight: 210).scrollIndicators(.visible)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.24), value: visibleTasks.map(\.isCompleted))
     }
 
+    private func taskRow(_ task: TodoTask) -> some View {
+        HStack(spacing: 8) {
+            Button { complete(task) } label: { Image(systemName: "circle").font(.system(size: 14, weight: .semibold)) }
+                .buttonStyle(.plain).accessibilityLabel("Mark \(task.title) complete")
+            if let category = task.category {
+                Circle().fill(category.color.swiftUIColor).frame(width: 7, height: 7)
+                    .help(category.name).accessibilityLabel("Category: \(category.name)")
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(task.title).font(.system(size: 13, weight: .medium)).lineLimit(2)
+                if let deadline = DeadlineFormatting.text(for: task) {
+                    Text(deadline).font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(taskIsOverdue(task) ? Color.orange : Color.secondary)
+                }
+            }
+            Spacer(minLength: 0)
+            Button { editingTask = task } label: { Image(systemName: "ellipsis") }
+                .buttonStyle(.plain).foregroundStyle(.secondary).accessibilityLabel("Edit \(task.title)")
+        }
+        .padding(.horizontal, 9).padding(.vertical, 7)
+        .background(.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .contextMenu { Button("Edit") { editingTask = task } }
+    }
+
+    private var emptyState: some View {
+        ContentUnavailableView("Nothing pending", systemImage: "checkmark.circle", description: Text("Add a task or choose another category."))
+            .frame(maxHeight: 150)
+    }
     private var footer: some View {
-        Button {
-            WindowManager.shared.showMainWindow()
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "arrow.up.right.square")
-                    .font(.system(size: 11, weight: .semibold))
-
-                Text("Open full app")
-                    .font(.system(size: 12, weight: .semibold))
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 7)
-            .background(.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        }
-        .buttonStyle(.plain)
+        Button { WindowManager.shared.showMainWindow() } label: {
+            Label("Open full app", systemImage: "arrow.up.right.square")
+                .font(.system(size: 11, weight: .semibold)).frame(maxWidth: .infinity)
+        }.buttonStyle(.plain).foregroundStyle(.secondary)
     }
 
-    private var widgetSurface: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(Color(nsColor: .windowBackgroundColor))
-                .opacity(0.08 + widgetTransparency * 0.16)
-
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .opacity(0.18 + widgetTransparency * 0.12)
-
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(.primary.opacity(0.02 + widgetTransparency * 0.025))
-
-            LinearGradient(
-                colors: [
-                    Color.white.opacity(0.06),
-                    Color(red: 1.0, green: 0.78, blue: 0.35).opacity(0.04),
-                    Color.clear
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        }
-    }
-
-    private func taskButton(for task: TodoTask) -> some View {
-        Button {
-            toggleCompletion(for: task)
-        } label: {
-            HStack(spacing: 8) {
-                Circle()
-                    .fill(task.priority.color)
-                    .frame(width: 7, height: 7)
-
-                Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(task.isCompleted ? Color.accentColor : Color.secondary)
-
-                FloatingTaskTitle(
-                    title: task.title,
-                    isCompleted: task.isCompleted,
-                    fontSize: 13,
-                    fontWeight: .medium,
-                    longTitleThreshold: 18
-                )
-
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 9)
-            .padding(.vertical, 7)
-            .background(.primary.opacity(task.isCompleted ? 0.018 : 0.032), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(task.title.isEmpty ? "Untitled task" : task.title)
-        .accessibilityValue(task.isCompleted ? "Completed" : "Not completed")
-    }
-
-    private func toggleCompletion(for task: TodoTask) {
-        let wasCompleted = task.isCompleted
-        task.isCompleted.toggle()
-
-        if !wasCompleted && task.isCompleted {
-            TaskListOrdering.moveCompletedTaskToFront(task, in: todayTasks)
-        } else if wasCompleted && !task.isCompleted {
-            TaskListOrdering.moveReactivatedTaskToEnd(task, in: todayTasks)
-        }
-
-        saveChanges()
-
-        if !wasCompleted && task.isCompleted {
-            CompletionFeedbackPlayer.playTaskCompletedSound()
-        }
-    }
-
-    private func saveChanges() {
+    private func addTask() {
         do {
+            guard let task = try TaskCreation.addTask(title: newTaskTitle, scheduledDate: nil, in: modelContext) else { return }
+            if case let .category(id) = filter { task.category = categories.first { $0.id == id } }
+            newTaskTitle = ""
             try modelContext.save()
-        } catch {
-            assertionFailure("Unable to save widget task change: \(error)")
-        }
+        } catch { assertionFailure("Unable to add widget task: \(error)") }
     }
-
-    private func runDailyTaskMaintenance() {
-        if TaskDayMaintenance.rolloverUnfinishedTasksToToday(tasks, calendar: calendar) {
-            saveChanges()
-        }
+    private func complete(_ task: TodoTask) {
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.24)) { task.setCompleted(true) }
+        try? modelContext.save()
+        CompletionFeedbackPlayer.playTaskCompletedSound()
     }
+    private func taskIsOverdue(_ task: TodoTask) -> Bool { (task.effectiveDeadline() ?? .distantFuture) < .now }
+    private var preferredColorScheme: ColorScheme? { (ThemeOption(rawValue: theme) ?? .light) == .light ? .light : .dark }
+}
 
-    private var preferredColorScheme: ColorScheme? {
-        switch ThemeOption(rawValue: theme) ?? .light {
-        case .light:
-            .light
-        case .dark:
-            .dark
+private struct WidgetGlassSurface: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 26.0, *) {
+            content.glassEffect(.regular, in: .rect(cornerRadius: 20)).shadow(color: .black.opacity(0.12), radius: 18, y: 8)
+        } else {
+            content.background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .overlay { RoundedRectangle(cornerRadius: 20).strokeBorder(.primary.opacity(0.10)) }
+                .shadow(color: .black.opacity(0.12), radius: 18, y: 8)
         }
     }
 }

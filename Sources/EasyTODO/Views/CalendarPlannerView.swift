@@ -361,7 +361,7 @@ struct CalendarPlannerView: View {
                     ForEach(tasks.prefix(2)) { task in
                         HStack(spacing: 4) {
                             Circle()
-                                .fill(task.priority.color)
+                                .fill(task.category?.color.swiftUIColor ?? Color.secondary.opacity(0.25))
                                 .frame(width: 5, height: 5)
 
                             Text(task.title.isEmpty ? "Untitled" : task.title)

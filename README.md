@@ -17,7 +17,7 @@
 
 </div>
 
-EasyTODO is a native macOS desktop todo app designed to stay visible, feel lightweight, and make capture fast. It removes the tedious setup common in task apps: no workspace setup, no cloud account, no project-management ceremony. Just today's tasks, always close at hand.
+EasyTODO is a native macOS floating task widget designed to stay visible, feel lightweight, and make the next task obvious. It keeps data local and avoids accounts, cloud services, and project-management ceremony.
 
 ![EasyTODO feature demo](docs/assets/hero-demo.gif)
 
@@ -52,21 +52,14 @@ Most todo apps make a simple thought feel like admin work: open a tab, pick a wo
 
 ![Quick Add demo](docs/assets/quick-add-demo.gif)
 
-### Organize, Prioritize, Complete
+### Organize, Schedule, Complete
 
-- Add, complete, delete, reorder, restore, and double-click to edit tasks inline.
-- Completed tasks are separated from active tasks; newly completed tasks move to the top of the completed group.
+- Add, complete, delete, restore, and edit task content, category, due date, and optional due time.
+- The widget orders unfinished tasks globally: overdue first, then upcoming deadlines, then tasks without deadlines.
+- Date-only deadlines remain date-only and are treated as due at the end of the local calendar day.
+- Completed tasks remain in local history and can be restored to unfinished.
 - Completion plays a system sound and shows a small fireworks effect.
-- Tasks use four clean priority colors while keeping the left row color strip visible.
-
-| Color | Meaning |
-| --- | --- |
-| Red | Important and urgent |
-| Yellow | Urgent but not important |
-| Green | Important but not urgent |
-| Gray | Neither urgent nor important |
-
-New tasks default to green. The UI shows a single color dot picker instead of written priority names.
+- Create, rename, recolor, and delete categories. Deleting a category leaves its tasks uncategorized.
 
 ### Menu Bar And Widget
 
@@ -75,11 +68,13 @@ New tasks default to green. The UI shows a single color dot picker instead of wr
 - Show today's progress in the macOS menu bar, such as `2 / 5`, and open a compact task popover.
 - Toggle completion directly from the menu bar popover without opening the full app.
 - Open a draggable desktop widget from the app menu, menu bar popover, or main window context menu.
-- The widget floats above the desktop, joins all Spaces, shows active/done counts, and opens the full app on double-click.
+- The widget floats above other apps, joins all Spaces, filters by category, and opens the full app on double-click.
+- It uses full opacity while EasyTODO is active and smoothly recedes to a configurable inactive opacity when another app is active.
+- macOS 26 uses native Liquid Glass; macOS 14 and 15 use native ultra-thin material.
 
 ### Planning, Window Control, Persistence
 
-- Click the date header to open calendar planning; legacy unscheduled tasks are normalized to today.
+- Click the date header to open calendar planning. Existing scheduled dates migrate as date-only deadlines.
 - Right-click the main window to change always-on-top, transparency, or widget mode.
 - Choose 100%, 80%, or 50% transparency levels.
 - SwiftData autosaves edits, app deactivation, and termination into the user's Application Support directory.
@@ -99,9 +94,11 @@ Requires macOS 14 or later.
 
 ## Run From Source
 
-From the repository root, build and launch the app with Swift Package Manager:
+From this fork's repository root, build, test, and launch with Swift Package Manager:
 
 ```sh
+swift build
+swift test
 swift run EasyTODO
 ```
 
@@ -117,11 +114,11 @@ swift run EasyTODO
 
 1. Launch EasyTODO from `Applications`.
 2. Add a task from the bottom `Add Task` row, the top-right `+`, or global Quick Add.
-3. Use the color dot to set priority.
-4. Check a task to complete it; EasyTODO plays a sound and shows a small celebration.
-5. Open the desktop widget from the app menu, menu bar popover, or main window context menu when you want a smaller view.
-6. Right-click the window to change always-on-top, transparency, or widget mode.
-7. Open Settings to manage launch, menu bar, visibility, transparency, and theme.
+3. Choose Edit Details on a task to assign a category and an optional due date/time.
+4. Check a task to complete it; use the history button in the main window to restore it.
+5. Use the tag button in the main window to manage categories.
+6. Open the floating widget from the app menu, menu bar popover, or main-window context menu.
+7. Open Settings to adjust active/inactive widget opacity, launch, menu bar, window, and theme options.
 
 ## Keyboard Shortcuts
 
@@ -143,7 +140,20 @@ swift run EasyTODO
 | Show in Menu Bar | On / Off |
 | Hide Dock Icon | On / Off when menu bar is enabled |
 | Transparency | 100%, 80%, 50% |
+| Active Widget Opacity | 65%–100% (default 100%) |
+| Inactive Widget Opacity | 25%–70% (default 45%) |
 | Theme | Light, Dark |
+
+## Personal-use App and DMG
+
+The existing packaging scripts remain available and do not require App Store distribution. To build an unsigned local app bundle, or create a personal-use DMG:
+
+```sh
+./scripts/package_app.sh
+./scripts/package_dmg.sh
+```
+
+You may need to right-click the unsigned app and choose Open on first launch. See each script's command-line help/source for its output path and optional version arguments.
 
 ## Project Structure
 
@@ -178,6 +188,7 @@ Reverse chronological history, based on Git commits.
 
 | Commit | Tag | Notes |
 | --- | --- | --- |
+| `pending` | ![feature](https://img.shields.io/badge/-feature-2da44e?style=flat-square) | Added the urgency-ordered floating widget, date/time deadlines, categories, completion history, adaptive opacity, and native Liquid Glass fallback. |
 | `v1.0.4` | ![release](https://img.shields.io/badge/-release-8250df?style=flat-square) | Added a widget right-click transparency slider and deepened the fully opaque widget surface. |
 | `v1.0.3` | ![release](https://img.shields.io/badge/-release-8250df?style=flat-square) | Added task context editing, priority sorting, date moves, repeat scheduling, and the agent restart rule. |
 | `v1.0.2` | ![release](https://img.shields.io/badge/-release-8250df?style=flat-square) | Added the Product Hunt badge and long-task floating text previews on hover. |

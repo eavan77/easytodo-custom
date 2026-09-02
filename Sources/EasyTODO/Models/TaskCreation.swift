@@ -5,7 +5,7 @@ enum TaskCreation {
     @MainActor
     static func addTask(
         title: String,
-        scheduledDate: Date = .now,
+        scheduledDate: Date? = nil,
         in context: ModelContext,
         calendar: Calendar = .current
     ) throws -> TodoTask? {
@@ -14,7 +14,8 @@ enum TaskCreation {
 
         let tasks = try context.fetch(FetchDescriptor<TodoTask>())
         let dayTasks = tasks.filter { task in
-            task.isScheduled(on: scheduledDate, calendar: calendar)
+            guard let scheduledDate else { return task.scheduledDate == nil }
+            return task.isScheduled(on: scheduledDate, calendar: calendar)
         }
         let nextSortOrder = (dayTasks.map(\.sortOrder).max() ?? -1) + 1
         let task = TodoTask(title: trimmedTitle, sortOrder: nextSortOrder, scheduledDate: scheduledDate)

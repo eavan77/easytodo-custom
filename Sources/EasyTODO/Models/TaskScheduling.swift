@@ -8,7 +8,12 @@ enum TaskScheduling {
             candidate !== task && candidate.isScheduled(on: targetDay, calendar: calendar)
         }
 
-        task.scheduledDate = targetDay
+        if task.hasExplicitDueTime, let currentDueDate = task.scheduledDate {
+            let time = calendar.dateComponents([.hour, .minute, .second], from: currentDueDate)
+            task.scheduledDate = calendar.date(bySettingHour: time.hour ?? 0, minute: time.minute ?? 0, second: time.second ?? 0, of: targetDay)
+        } else {
+            task.setDueDate(targetDay, includesTime: false, calendar: calendar)
+        }
         task.sortOrder = (dayTasks.map(\.sortOrder).max() ?? -1) + 1
     }
 }
@@ -45,6 +50,8 @@ enum TaskRepeatScheduler {
                 sortOrder: nextSortOrder(on: date, in: tasks, calendar: calendar),
                 createdAt: Date(),
                 scheduledDate: date,
+                hasExplicitDueTime: task.hasExplicitDueTime,
+                category: task.category,
                 priority: task.priority,
                 repeatRule: repeatRule,
                 recurrenceGroupID: groupID

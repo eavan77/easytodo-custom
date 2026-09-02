@@ -11,7 +11,7 @@ final class EasyTODOTests: XCTestCase {
         XCTAssertFalse(task.isCompleted)
         XCTAssertEqual(task.sortOrder, 2)
         XCTAssertEqual(task.priority, .notUrgentImportant)
-        XCTAssertTrue(task.isScheduled(on: .now))
+        XCTAssertNil(task.scheduledDate)
     }
 
     func testTaskScheduledDateIsStoredAsStartOfDay() throws {
@@ -103,16 +103,97 @@ final class EasyTODOTests: XCTestCase {
         XCTAssertEqual(tasks.first?.sortOrder, 0)
     }
 
-    func testTasksAreOrderedByPriorityThenAddOrder() {
+    func testLegacyPriorityDoesNotControlUrgencyOrdering() {
         let firstGreen = TodoTask(title: "First green", sortOrder: 0, priority: .notUrgentImportant)
         let red = TodoTask(title: "Red", sortOrder: 1, priority: .importantUrgent)
         let yellow = TodoTask(title: "Yellow", sortOrder: 2, priority: .urgentNotImportant)
         let secondGreen = TodoTask(title: "Second green", sortOrder: 3, priority: .notUrgentImportant)
 
         XCTAssertEqual(
-            TaskListOrdering.ordered([firstGreen, red, yellow, secondGreen]).map(\.title),
-            ["Red", "Yellow", "First green", "Second green"]
+            TaskUrgencyOrdering.ordered([firstGreen, red, yellow, secondGreen]).map(\.title),
+            ["First green", "Red", "Yellow", "Second green"]
         )
+    }
+
+    func testDeadlineOrderingOverdueThenUpcomingThenNoDeadline() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let now = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 9, day: 2, hour: 12)))
+        let overdue = TodoTask(title: "Overdue", createdAt: now, scheduledDate: now.addingTimeInterval(-3600), hasExplicitDueTime: true)
+        let upcoming = TodoTask(title: "Upcoming", createdAt: now, scheduledDate: now.addingTimeInterval(3600), hasExplicitDueTime: true)
+        let later = TodoTask(title: "Later", createdAt: now, scheduledDate: now.addingTimeInterval(7200), hasExplicitDueTime: true)
+        let none = TodoTask(title: "No deadline", createdAt: now)
+
+        XCTAssertEqual(TaskUrgencyOrdering.ordered([none, later, upcoming, overdue], now: now, calendar: calendar).map(\.title),
+                       ["Overdue", "Upcoming", "Later", "No deadline"])
+    }
+
+    func testDateOnlyDeadlineUsesEndOfLocalDay() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let day = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 9, day: 2, hour: 8)))
+        let task = TodoTask(title: "Date only", scheduledDate: day)
+        let deadline = try XCTUnwrap(task.effectiveDeadline(in: calendar))
+        let evening = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 9, day: 2, hour: 18)))
+
+        XCTAssertEqual(calendar.component(.hour, from: deadline), 23)
+        XCTAssertEqual(calendar.component(.minute, from: deadline), 59)
+        XCTAssertFalse(deadline < evening)
+    }
+
+    func testExplicitDueTimeIsPreserved() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let due = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 9, day: 8, hour: 18, minute: 30)))
+        let task = TodoTask(title: "Submit", scheduledDate: due, hasExplicitDueTime: true)
+
+        XCTAssertTrue(task.hasExplicitDueTime)
+        XCTAssertEqual(task.scheduledDate, due)
+        XCTAssertEqual(task.effectiveDeadline(in: calendar), due)
+    }
+
+    func testEquivalentDeadlinesUseCreationTime() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let due = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 9, day: 3)))
+        let early = TodoTask(title: "Early", createdAt: due.addingTimeInterval(-20), scheduledDate: due)
+        let late = TodoTask(title: "Late", createdAt: due.addingTimeInterval(-10), scheduledDate: due)
+        XCTAssertEqual(TaskUrgencyOrdering.ordered([late, early], now: due.addingTimeInterval(-100), calendar: calendar).map(\.title), ["Early", "Late"])
+    }
+
+    func testWidgetVisibilityExcludesCompletedAndFiltersCategory() {
+        let school = TaskCategory(name: "School")
+        let schoolTask = TodoTask(title: "Essay", category: school)
+        let personalTask = TodoTask(title: "Laundry")
+        let completed = TodoTask(title: "Done", isCompleted: true, category: school)
+
+        XCTAssertEqual(TaskUrgencyOrdering.visibleTasks(from: [completed, personalTask, schoolTask]).count, 2)
+        XCTAssertEqual(TaskUrgencyOrdering.visibleTasks(from: [completed, personalTask, schoolTask], filter: .category(school.id)).map(\.title), ["Essay"])
+        XCTAssertEqual(TaskUrgencyOrdering.visibleTasks(from: [completed, personalTask, schoolTask], filter: .uncategorized).map(\.title), ["Laundry"])
+    }
+
+    func testDeletingCategoryLeavesTaskUncategorized() throws {
+        let container = try PersistenceController.modelContainer(inMemory: true)
+        let context = container.mainContext
+        let category = TaskCategory(name: "Personal")
+        let task = TodoTask(title: "Call dentist", category: category)
+        context.insert(category)
+        context.insert(task)
+        try context.save()
+
+        context.delete(category)
+        try context.save()
+
+        let tasks = try context.fetch(FetchDescriptor<TodoTask>())
+        XCTAssertEqual(tasks.count, 1)
+        XCTAssertNil(tasks[0].category)
+    }
+
+    func testCompletionTimestampIsSetAndCleared() {
+        let task = TodoTask(title: "Finish")
+        let date = Date(timeIntervalSince1970: 1234)
+        task.setCompleted(true, at: date)
+        XCTAssertTrue(task.isCompleted)
+        XCTAssertEqual(task.completedAt, date)
+        task.setCompleted(false, at: date)
+        XCTAssertFalse(task.isCompleted)
+        XCTAssertNil(task.completedAt)
     }
 
     func testTaskCanMoveToAnotherDate() throws {

@@ -2,21 +2,18 @@ import Foundation
 
 enum TaskListOrdering {
     static func ordered(_ tasks: [TodoTask]) -> [TodoTask] {
-        tasks.sorted { lhs, rhs in
-            if lhs.isCompleted != rhs.isCompleted {
-                return !lhs.isCompleted && rhs.isCompleted
+        let active = TaskUrgencyOrdering.ordered(tasks.filter { !$0.isCompleted })
+        let completed = tasks.filter(\.isCompleted).sorted { lhs, rhs in
+            switch (lhs.completedAt, rhs.completedAt) {
+            case let (.some(left), .some(right)) where left != right: return left > right
+            case (.some, .none): return true
+            case (.none, .some): return false
+            default:
+                if lhs.sortOrder != rhs.sortOrder { return lhs.sortOrder < rhs.sortOrder }
+                return lhs.createdAt < rhs.createdAt
             }
-
-            if lhs.priority.prioritySortRank != rhs.priority.prioritySortRank {
-                return lhs.priority.prioritySortRank < rhs.priority.prioritySortRank
-            }
-
-            if lhs.sortOrder != rhs.sortOrder {
-                return lhs.sortOrder < rhs.sortOrder
-            }
-
-            return lhs.createdAt < rhs.createdAt
         }
+        return active + completed
     }
 
     static func moveCompletedTaskToFront(_ task: TodoTask, in tasks: [TodoTask]) {

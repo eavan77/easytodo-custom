@@ -17,15 +17,17 @@ struct TaskRow: View {
     @State private var editFocusRequest = 0
     @State private var isMoveDatePresented = false
     @State private var moveDate = Date()
+    @State private var isEditorPresented = false
 
     private let calendar = Calendar.current
 
     var body: some View {
         HStack(spacing: 10) {
-            RoundedRectangle(cornerRadius: 2, style: .continuous)
-                .fill(task.priority.color)
-                .frame(width: 4, height: 24)
-                .opacity(task.isCompleted ? 0.45 : 1)
+            Circle()
+                .fill(task.category?.color.swiftUIColor ?? Color.clear)
+                .overlay { Circle().strokeBorder(.secondary.opacity(task.category == nil ? 0.3 : 0)) }
+                .frame(width: 8, height: 8)
+                .help(task.category?.name ?? "Uncategorized")
 
             Image(systemName: "line.3.horizontal")
                 .font(.system(size: 11, weight: .semibold))
@@ -38,9 +40,6 @@ struct TaskRow: View {
                 }
 
             titleContent
-
-            PriorityPicker(priority: priorityBinding)
-                .opacity(task.isCompleted ? 0.6 : 1)
 
             Button {
                 isConfirmingDelete = true
@@ -80,6 +79,7 @@ struct TaskRow: View {
         .popover(isPresented: $isMoveDatePresented, arrowEdge: .trailing) {
             moveDatePopover
         }
+        .sheet(isPresented: $isEditorPresented) { TaskEditorView(task: task) }
     }
 
     @ViewBuilder
@@ -126,9 +126,9 @@ struct TaskRow: View {
     @ViewBuilder
     private var taskContextMenu: some View {
         Button {
-            beginTitleEdit()
+            isEditorPresented = true
         } label: {
-            Label("Edit", systemImage: "pencil")
+            Label("Edit Details", systemImage: "pencil")
         }
 
         if onMoveToDate != nil {
@@ -208,14 +208,6 @@ struct TaskRow: View {
         return title.isEmpty ? "This task will be removed." : "\"\(title)\" will be removed."
     }
 
-    private var priorityBinding: Binding<TaskPriority> {
-        Binding {
-            task.priority
-        } set: { newPriority in
-            task.priority = newPriority
-            onUpdate()
-        }
-    }
 }
 
 private struct InlineTaskTitleTextField: NSViewRepresentable {

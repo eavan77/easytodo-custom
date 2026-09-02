@@ -3,7 +3,8 @@ import SwiftData
 
 enum PersistenceController {
     static let schema = Schema([
-        TodoTask.self
+        TodoTask.self,
+        TaskCategory.self
     ])
 
     @MainActor

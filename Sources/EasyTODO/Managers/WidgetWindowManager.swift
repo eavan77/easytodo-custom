@@ -9,8 +9,19 @@ final class WidgetWindowManager {
     private var modelContainer: ModelContainer?
     private var widgetWindow: NSPanel?
     private var contextMenuController: WidgetContextMenuController?
+    private var activationObservers: [NSObjectProtocol] = []
 
-    private init() {}
+    private init() {
+        let center = NotificationCenter.default
+        activationObservers = [
+            center.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
+                Task { @MainActor in WidgetWindowManager.shared.updateOpacity(animated: true) }
+            },
+            center.addObserver(forName: NSApplication.willResignActiveNotification, object: nil, queue: .main) { _ in
+                Task { @MainActor in WidgetWindowManager.shared.updateOpacity(animated: true) }
+            }
+        ]
+    }
 
     func configure(modelContainer: ModelContainer) {
         self.modelContainer = modelContainer
@@ -28,7 +39,7 @@ final class WidgetWindowManager {
             return
         }
 
-        let size = NSSize(width: 236, height: 312)
+        let size = NSSize(width: 276, height: 350)
         let panel = WidgetPanel(
             contentRect: preferredFrame(size: size),
             styleMask: [.borderless, .fullSizeContentView, .nonactivatingPanel],
@@ -41,7 +52,7 @@ final class WidgetWindowManager {
         panel.backgroundColor = .clear
         panel.hasShadow = false
         panel.level = .floating
-        panel.alphaValue = widgetAlphaValue
+        panel.alphaValue = targetAlphaValue
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.isMovableByWindowBackground = true
         panel.isReleasedWhenClosed = false
@@ -63,7 +74,7 @@ final class WidgetWindowManager {
     }
 
     func applyWidgetTransparency() {
-        widgetWindow?.alphaValue = widgetAlphaValue
+        updateOpacity(animated: true)
     }
 
     func showContextMenu(for event: NSEvent, in panel: NSPanel) {
@@ -99,7 +110,7 @@ final class WidgetWindowManager {
     }
 
     private func show(window: NSPanel) {
-        window.alphaValue = widgetAlphaValue
+        window.alphaValue = targetAlphaValue
 
         if window.isMiniaturized {
             window.deminiaturize(nil)
@@ -108,22 +119,38 @@ final class WidgetWindowManager {
         window.orderFrontRegardless()
     }
 
-    private var widgetAlphaValue: CGFloat {
-        let transparency = UserDefaults.standard.double(forKey: EasyTODOSettings.widgetTransparency)
-        return CGFloat(min(max(transparency, 0.35), 1.0))
+    fileprivate func activateForInteraction() {
+        NSApp.activate(ignoringOtherApps: true)
+        updateOpacity(animated: true)
+    }
+
+    fileprivate func updateOpacity(animated: Bool) {
+        guard let widgetWindow else { return }
+        let changes = { widgetWindow.alphaValue = self.targetAlphaValue }
+        guard animated, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { changes(); return }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.20
+            widgetWindow.animator().alphaValue = targetAlphaValue
+        }
+    }
+
+    private var targetAlphaValue: CGFloat {
+        let key = NSApp.isActive ? EasyTODOSettings.widgetActiveOpacity : EasyTODOSettings.widgetInactiveOpacity
+        let value = UserDefaults.standard.double(forKey: key)
+        return CGFloat(min(max(value, 0.20), 1.0))
     }
 
     private func transparencyMenuItem(controller: WidgetContextMenuController) -> NSMenuItem {
         let item = NSMenuItem()
         let container = NSView(frame: NSRect(x: 0, y: 0, width: 220, height: 54))
-        let currentValue = UserDefaults.standard.double(forKey: EasyTODOSettings.widgetTransparency)
+        let currentValue = UserDefaults.standard.double(forKey: EasyTODOSettings.widgetInactiveOpacity)
 
-        let label = NSTextField(labelWithString: "Transparency \(Int((currentValue * 100).rounded()))%")
+        let label = NSTextField(labelWithString: "Inactive opacity \(Int((currentValue * 100).rounded()))%")
         label.frame = NSRect(x: 14, y: 31, width: 190, height: 16)
         label.font = .systemFont(ofSize: 12, weight: .medium)
         label.textColor = .labelColor
 
-        let slider = NSSlider(value: currentValue, minValue: 0.35, maxValue: 1.0, target: controller, action: #selector(WidgetContextMenuController.changeTransparency(_:)))
+        let slider = NSSlider(value: currentValue, minValue: 0.25, maxValue: 0.70, target: controller, action: #selector(WidgetContextMenuController.changeTransparency(_:)))
         slider.frame = NSRect(x: 12, y: 6, width: 196, height: 24)
         slider.isContinuous = true
 
@@ -160,6 +187,9 @@ private final class WidgetPanel: NSPanel {
     override var canBecomeMain: Bool { false }
 
     override func sendEvent(_ event: NSEvent) {
+        if event.type == .leftMouseDown {
+            WidgetWindowManager.shared.activateForInteraction()
+        }
         if event.type == .rightMouseDown {
             WidgetWindowManager.shared.showContextMenu(for: event, in: self)
             return
@@ -183,8 +213,8 @@ private final class WidgetContextMenuController: NSObject {
 
     @objc func changeTransparency(_ sender: NSSlider) {
         let value = sender.doubleValue
-        UserDefaults.standard.set(value, forKey: EasyTODOSettings.widgetTransparency)
-        transparencyLabel?.stringValue = "Transparency \(Int((value * 100).rounded()))%"
+        UserDefaults.standard.set(value, forKey: EasyTODOSettings.widgetInactiveOpacity)
+        transparencyLabel?.stringValue = "Inactive opacity \(Int((value * 100).rounded()))%"
         WidgetWindowManager.shared.applyWidgetTransparency()
     }
 }

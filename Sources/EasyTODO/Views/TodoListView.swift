@@ -21,6 +21,8 @@ struct TodoListView: View {
     @State private var deletedTaskToRestore: DeletedTaskSnapshot?
     @State private var undoKeyMonitor: Any?
     @State private var fireworksTrigger = 0
+    @State private var isCategoriesPresented = false
+    @State private var isCompletedHistoryPresented = false
 
     private let calendar = Calendar.current
     private let dayRefreshTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
@@ -183,6 +185,8 @@ struct TodoListView: View {
                 }
             )
         }
+        .sheet(isPresented: $isCategoriesPresented) { CategoryManagementView() }
+        .sheet(isPresented: $isCompletedHistoryPresented) { CompletedTasksView() }
         .onAppear {
             runDailyTaskMaintenance()
             installUndoDeleteKeyboardMonitor()
@@ -276,6 +280,16 @@ struct TodoListView: View {
 
             Spacer()
 
+            Button { isCompletedHistoryPresented = true } label: {
+                Image(systemName: "clock.arrow.circlepath").frame(width: 28, height: 28)
+            }
+            .buttonStyle(.plain).help("Completed tasks").accessibilityLabel("Completed task history")
+
+            Button { isCategoriesPresented = true } label: {
+                Image(systemName: "tag").frame(width: 28, height: 28)
+            }
+            .buttonStyle(.plain).help("Manage categories").accessibilityLabel("Manage categories")
+
             Button(action: showHeaderQuickAdd) {
                 Image(systemName: "plus")
                     .font(.system(size: 14, weight: .semibold))
@@ -358,7 +372,7 @@ struct TodoListView: View {
 
         let restoredTask = deletedTaskToRestore.task()
         modelContext.insert(restoredTask)
-        selectedDate = deletedTaskToRestore.scheduledDate
+        selectedDate = deletedTaskToRestore.scheduledDate ?? .now
         self.deletedTaskToRestore = nil
         saveChanges()
     }
@@ -425,6 +439,7 @@ struct TodoListView: View {
     }
 
     private func handleCompletionChange(task: TodoTask, oldValue: Bool, newValue: Bool) {
+        task.completedAt = newValue ? .now : nil
         let taskDate = task.scheduledDay(in: calendar)
 
         if !oldValue && newValue {
@@ -460,25 +475,8 @@ struct TodoListView: View {
 
     private func runDailyTaskMaintenance() {
         let today = calendar.startOfDay(for: .now)
-        var didChange = false
-
-        for task in tasks where task.scheduledDate == nil {
-            task.scheduledDate = today
-            didChange = true
-        }
-
-        didChange = TaskDayMaintenance.rolloverUnfinishedTasksToToday(
-            tasks,
-            today: today,
-            calendar: calendar
-        ) || didChange
-
         if selectedDate < today {
             selectedDate = today
-        }
-
-        if didChange {
-            saveChanges()
         }
     }
 
@@ -504,8 +502,11 @@ private struct DeletedTaskSnapshot {
     let isCompleted: Bool
     let sortOrder: Int
     let createdAt: Date
-    let scheduledDate: Date
+    let scheduledDate: Date?
     let priority: TaskPriority
+    let hasExplicitDueTime: Bool
+    let completedAt: Date?
+    let category: TaskCategory?
     let repeatRule: TaskRepeatRule
     let recurrenceGroupID: String?
 
@@ -514,8 +515,11 @@ private struct DeletedTaskSnapshot {
         isCompleted = task.isCompleted
         sortOrder = task.sortOrder
         createdAt = task.createdAt
-        scheduledDate = task.scheduledDay(in: calendar)
+        scheduledDate = task.scheduledDate
         priority = task.priority
+        hasExplicitDueTime = task.hasExplicitDueTime
+        completedAt = task.completedAt
+        category = task.category
         repeatRule = task.repeatRule
         recurrenceGroupID = task.recurrenceGroupID
     }
@@ -527,6 +531,9 @@ private struct DeletedTaskSnapshot {
             sortOrder: sortOrder,
             createdAt: createdAt,
             scheduledDate: scheduledDate,
+            hasExplicitDueTime: hasExplicitDueTime,
+            completedAt: completedAt,
+            category: category,
             priority: priority,
             repeatRule: repeatRule,
             recurrenceGroupID: recurrenceGroupID

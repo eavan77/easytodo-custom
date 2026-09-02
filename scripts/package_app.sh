@@ -117,7 +117,19 @@ printf "APPL????" > "$CONTENTS_DIR/PkgInfo"
 plutil -lint "$INFO_PLIST" >/dev/null
 
 if command -v codesign >/dev/null 2>&1; then
+    # Finder/FileProvider metadata makes otherwise valid bundles fail signing.
+    # Strip it only from the generated app, immediately before signing.
+    case "$APP_BUNDLE" in
+        "$PROJECT_ROOT"/dist/*.app)
+            /usr/bin/xattr -cr "$APP_BUNDLE"
+            ;;
+        *)
+            echo "Refusing to alter extended attributes outside generated app: $APP_BUNDLE" >&2
+            exit 1
+            ;;
+    esac
     codesign --force --deep --sign - "$APP_BUNDLE" >/dev/null
+    codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
 fi
 
 rm -f "$ZIP_PATH"

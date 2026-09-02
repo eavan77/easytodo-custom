@@ -4,6 +4,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         EasyTODOSettings.registerDefaults()
         AppLogo.applyApplicationIcon()
+        MenuBarManager.shared.applicationDidFinishLaunching()
         GlobalShortcutManager.shared.registerQuickAddShortcut()
         WindowManager.shared.applyActivationPolicy()
         NSApp.activate(ignoringOtherApps: true)

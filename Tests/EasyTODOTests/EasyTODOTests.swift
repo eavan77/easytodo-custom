@@ -4,6 +4,14 @@ import XCTest
 
 @MainActor
 final class EasyTODOTests: XCTestCase {
+    func testMenuBarConfigurationDoesNotCreateAppKitUIBeforeLaunchFinishes() throws {
+        let container = try PersistenceController.modelContainer(inMemory: true)
+
+        MenuBarManager.shared.configure(modelContainer: container)
+
+        XCTAssertFalse(MenuBarManager.shared.isStatusItemInstalledForTesting)
+    }
+
     func testTaskDefaultsToIncomplete() {
         let task = TodoTask(title: "Read paper", sortOrder: 2)
 

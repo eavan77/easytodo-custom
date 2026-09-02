@@ -12,6 +12,7 @@ final class MenuBarManager: NSObject {
     private var refreshTimer: Timer?
     private var defaultsObserver: NSObjectProtocol?
     private var pendingSingleClick: DispatchWorkItem?
+    private var hasFinishedLaunching = false
 
     private override init() {
         super.init()
@@ -19,9 +20,18 @@ final class MenuBarManager: NSObject {
 
     func configure(modelContainer: ModelContainer) {
         self.modelContainer = modelContainer
+    }
+
+    /// Starts AppKit-backed menu bar behavior. This must only be called from
+    /// `applicationDidFinishLaunching`, after the WindowServer connection exists.
+    func applicationDidFinishLaunching() {
+        guard !hasFinishedLaunching else { return }
+        hasFinishedLaunching = true
         observeSettings()
         syncVisibility()
     }
+
+    var isStatusItemInstalledForTesting: Bool { statusItem != nil }
 
     func closePopover() {
         pendingSingleClick?.cancel()
@@ -45,6 +55,7 @@ final class MenuBarManager: NSObject {
     }
 
     private func syncVisibility() {
+        guard hasFinishedLaunching else { return }
         if UserDefaults.standard.bool(forKey: EasyTODOSettings.showMenuBar) {
             installStatusItem()
         } else {

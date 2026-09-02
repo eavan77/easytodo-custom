@@ -188,6 +188,7 @@ Reverse chronological history, based on Git commits.
 
 | Commit | Tag | Notes |
 | --- | --- | --- |
+| `pending` | ![fix](https://img.shields.io/badge/-fix-c93c37?style=flat-square) | Deferred menu bar UI creation until AppKit finishes launching and hardened package signing against copied extended attributes. |
 | `pending` | ![feature](https://img.shields.io/badge/-feature-2da44e?style=flat-square) | Added the urgency-ordered floating widget, date/time deadlines, categories, completion history, adaptive opacity, and native Liquid Glass fallback. |
 | `v1.0.4` | ![release](https://img.shields.io/badge/-release-8250df?style=flat-square) | Added a widget right-click transparency slider and deepened the fully opaque widget surface. |
 | `v1.0.3` | ![release](https://img.shields.io/badge/-release-8250df?style=flat-square) | Added task context editing, priority sorting, date moves, repeat scheduling, and the agent restart rule. |

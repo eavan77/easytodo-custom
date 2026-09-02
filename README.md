@@ -186,6 +186,7 @@ Reverse chronological history, based on Git commits.
 
 | Commit | Tag | Notes |
 | --- | --- | --- |
+| `pending` | ![fix](https://img.shields.io/badge/-fix-c93c37?style=flat-square) | Synchronized anchored widget frame/content transitions and redesigned the launcher with a premium dark metallic sheen. |
 | `pending` | ![feature](https://img.shields.io/badge/-feature-2da44e?style=flat-square) | Made the fixed top-right hover launcher the default startup interface with interaction-safe automatic expansion and collapse. |
 | `pending` | ![feature](https://img.shields.io/badge/-feature-2da44e?style=flat-square) | Reworked the main window as a global urgency list, added detailed creation, low-opacity inactive mode, neutral glass styling, and a collapsible floating control. |
 | `pending` | ![fix](https://img.shields.io/badge/-fix-c93c37?style=flat-square) | Deferred menu bar UI creation until AppKit finishes launching and hardened package signing against copied extended attributes. |

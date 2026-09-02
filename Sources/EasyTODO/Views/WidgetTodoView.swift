@@ -11,10 +11,7 @@ struct WidgetRootView: View {
                 Button {
                     WidgetWindowManager.shared.pointerEntered()
                 } label: {
-                    Image(systemName: "checklist")
-                        .font(.system(size: 17, weight: .semibold))
-                        .frame(width: 40, height: 40)
-                        .contentShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+                    PremiumLauncherView()
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Open EasyTODO tasks")
@@ -51,7 +48,7 @@ struct WidgetTodoView: View {
             if visibleTasks.isEmpty { emptyState } else { taskList }
             footer
         }
-        .padding(13).frame(width: 276)
+        .padding(13).frame(width: 276, height: 350, alignment: .top)
         .foregroundStyle(.primary)
         .modifier(WidgetGlassSurface(cornerRadius: 20))
         .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
@@ -167,6 +164,71 @@ struct WidgetTodoView: View {
         return nil
     }
     private var preferredColorScheme: ColorScheme? { (ThemeOption(rawValue: theme) ?? .light) == .light ? .light : .dark }
+}
+
+private struct PremiumLauncherView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var sheenOffset: CGFloat = -58
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [Color(white: 0.24), Color(white: 0.075), Color.black.opacity(0.96)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [.white.opacity(0.22), .clear, .black.opacity(0.26)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .padding(1)
+
+            Image(systemName: "checklist.checked")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [.white, Color(white: 0.66)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .shadow(color: .black.opacity(0.7), radius: 1, y: 1)
+
+            LinearGradient(
+                colors: [.clear, .white.opacity(0.02), .white.opacity(0.34), .white.opacity(0.02), .clear],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            .frame(width: 15, height: 58)
+            .rotationEffect(.degrees(18))
+            .offset(x: sheenOffset)
+            .blendMode(.screen)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .stroke(
+                    LinearGradient(colors: [.white.opacity(0.48), .white.opacity(0.08), .black.opacity(0.65)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                    lineWidth: 0.8
+                )
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .frame(width: 40, height: 40)
+        .contentShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.linear(duration: 1.0).delay(3.2).repeatForever(autoreverses: false)) {
+                sheenOffset = 58
+            }
+        }
+    }
 }
 
 private struct WidgetGlassSurface: ViewModifier {

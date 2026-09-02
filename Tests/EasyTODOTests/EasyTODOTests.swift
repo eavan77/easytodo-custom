@@ -216,6 +216,18 @@ final class EasyTODOTests: XCTestCase {
         XCTAssertEqual(state.interactionLockCount, 0)
     }
 
+    func testLauncherAndExpandedFramesShareStableTopRightAnchor() {
+        let visible = CGRect(x: 100, y: 50, width: 1440, height: 900)
+        let launcher = WidgetPanelGeometry.topRightFrame(size: CGSize(width: 40, height: 40), visibleFrame: visible, inset: 16)
+        let expanded = WidgetPanelGeometry.topRightFrame(size: CGSize(width: 276, height: 350), visibleFrame: visible, inset: 16)
+
+        XCTAssertEqual(launcher.maxX, expanded.maxX)
+        XCTAssertEqual(launcher.maxY, expanded.maxY)
+        XCTAssertEqual(launcher.size, CGSize(width: 40, height: 40))
+        XCTAssertEqual(expanded.size, CGSize(width: 276, height: 350))
+        XCTAssertEqual(WidgetPanelGeometry.topRightFrame(size: launcher.size, visibleFrame: visible, inset: 16), launcher)
+    }
+
     func testDateOnlyDeadlineUsesEndOfLocalDay() throws {
         let calendar = Calendar(identifier: .gregorian)
         let day = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 9, day: 2, hour: 8)))

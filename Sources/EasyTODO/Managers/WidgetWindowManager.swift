@@ -48,8 +48,7 @@ final class WidgetWindowManager {
         guard let panel = widgetWindow else { return }
         cancelPendingCollapse()
         hoverState.show()
-        applyLauncherFrame(to: panel, animate: false)
-        notifyPresentationChanged()
+        transition(panel, to: .launcher)
         panel.alphaValue = 1
         panel.orderFrontRegardless()
     }
@@ -71,8 +70,7 @@ final class WidgetWindowManager {
         let wasLauncher = hoverState.visibility == .launcher
         hoverState.pointerEntered()
         if wasLauncher, let panel = widgetWindow {
-            applyExpandedFrame(to: panel, animate: true)
-            notifyPresentationChanged()
+            transition(panel, to: .expanded)
         }
     }
 
@@ -157,8 +155,7 @@ final class WidgetWindowManager {
         hoverState.collapseGracePeriodCompleted()
         guard hoverState.visibility == .launcher, let panel = widgetWindow else { return }
         pendingCollapse = nil
-        applyLauncherFrame(to: panel, animate: true)
-        notifyPresentationChanged()
+        transition(panel, to: .launcher)
     }
 
     private func cancelPendingCollapse() {
@@ -166,38 +163,27 @@ final class WidgetWindowManager {
         pendingCollapse = nil
     }
 
-    private func applyLauncherFrame(to panel: NSPanel, animate: Bool) {
-        let screen = panel.screen ?? preferredScreen()
-        setFrame(launcherFrame(on: screen), on: panel, animate: animate)
-    }
-
-    private func applyExpandedFrame(to panel: NSPanel, animate: Bool) {
-        let screen = panel.screen ?? preferredScreen()
-        setFrame(expandedFrame(on: screen), on: panel, animate: animate)
-    }
-
     private func launcherFrame(on screen: NSScreen) -> NSRect {
-        let visible = screen.visibleFrame
-        return NSRect(
-            x: visible.maxX - launcherSize.width - edgeInset,
-            y: visible.maxY - launcherSize.height - edgeInset,
-            width: launcherSize.width,
-            height: launcherSize.height
-        )
+        WidgetPanelGeometry.topRightFrame(size: launcherSize, visibleFrame: screen.visibleFrame, inset: edgeInset)
     }
 
     private func expandedFrame(on screen: NSScreen) -> NSRect {
-        let launcher = launcherFrame(on: screen)
-        return NSRect(
-            x: launcher.maxX - expandedSize.width,
-            y: launcher.maxY - expandedSize.height,
-            width: expandedSize.width,
-            height: expandedSize.height
-        )
+        WidgetPanelGeometry.topRightFrame(size: expandedSize, visibleFrame: screen.visibleFrame, inset: edgeInset)
     }
 
-    private func setFrame(_ frame: NSRect, on panel: NSPanel, animate: Bool) {
-        panel.setFrame(frame, display: true, animate: animate && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+    /// Frame and SwiftUI mode change under one disabled screen flush. This keeps
+    /// expanded content out of the launcher's 40-point clipping bounds and keeps
+    /// the shared top-right edge stationary during every transition.
+    private func transition(_ panel: NSPanel, to visibility: WidgetHoverState.Visibility) {
+        let screen = panel.screen ?? preferredScreen()
+        let frame = visibility == .expanded ? expandedFrame(on: screen) : launcherFrame(on: screen)
+        panel.disableScreenUpdatesUntilFlush()
+        panel.setFrame(frame, display: false, animate: false)
+        panel.contentView?.frame = NSRect(origin: .zero, size: frame.size)
+        notifyPresentationChanged()
+        panel.contentView?.needsLayout = true
+        panel.contentView?.layoutSubtreeIfNeeded()
+        panel.displayIfNeeded()
     }
 
     private func notifyPresentationChanged() {

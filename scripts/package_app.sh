@@ -9,13 +9,16 @@ CONFIGURATION="${CONFIGURATION:-release}"
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="$PROJECT_ROOT/dist"
-APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
+STAGING_DIR="$(mktemp -d "${TMPDIR:-/tmp}/easytodo-package.XXXXXX")"
+trap 'rm -rf "$STAGING_DIR"' EXIT
+APP_BUNDLE="$STAGING_DIR/$APP_NAME.app"
+FINAL_APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
 CONTENTS_DIR="$APP_BUNDLE/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 INFO_PLIST="$CONTENTS_DIR/Info.plist"
 ICON_SOURCE="$PROJECT_ROOT/Sources/EasyTODO/Resources/logo.png"
-ICONSET_DIR="$DIST_DIR/$APP_NAME.iconset"
+ICONSET_DIR="$STAGING_DIR/$APP_NAME.iconset"
 ICON_FILE="$RESOURCES_DIR/$APP_NAME.icns"
 ZIP_PATH="$DIST_DIR/$APP_NAME-macOS.zip"
 
@@ -35,18 +38,6 @@ if [[ ! -x "$EXECUTABLE" ]]; then
 fi
 
 mkdir -p "$DIST_DIR"
-
-if [[ -e "$APP_BUNDLE" ]]; then
-    case "$APP_BUNDLE" in
-        "$PROJECT_ROOT"/dist/*.app)
-            rm -rf "$APP_BUNDLE"
-            ;;
-        *)
-            echo "Refusing to remove unexpected app path: $APP_BUNDLE" >&2
-            exit 1
-            ;;
-    esac
-fi
 
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 install -m 755 "$EXECUTABLE" "$MACOS_DIR/$APP_NAME"
@@ -120,7 +111,7 @@ if command -v codesign >/dev/null 2>&1; then
     # Finder/FileProvider metadata makes otherwise valid bundles fail signing.
     # Strip it only from the generated app, immediately before signing.
     case "$APP_BUNDLE" in
-        "$PROJECT_ROOT"/dist/*.app)
+        "$STAGING_DIR"/*.app)
             /usr/bin/xattr -cr "$APP_BUNDLE"
             ;;
         *)
@@ -135,12 +126,20 @@ fi
 rm -f "$ZIP_PATH"
 COPYFILE_DISABLE=1 ditto -c -k --norsrc --keepParent "$APP_BUNDLE" "$ZIP_PATH"
 
+if [[ -e "$FINAL_APP_BUNDLE" ]]; then
+    case "$FINAL_APP_BUNDLE" in
+        "$PROJECT_ROOT"/dist/*.app) rm -rf "$FINAL_APP_BUNDLE" ;;
+        *) echo "Refusing to replace unexpected app path: $FINAL_APP_BUNDLE" >&2; exit 1 ;;
+    esac
+fi
+COPYFILE_DISABLE=1 ditto --norsrc "$APP_BUNDLE" "$FINAL_APP_BUNDLE"
+
 if command -v codesign >/dev/null 2>&1; then
     # FileProvider-backed folders can reattach Finder metadata while archiving.
     # Clean the generated bundle once more and verify the final on-disk result.
-    /usr/bin/xattr -cr "$APP_BUNDLE"
-    codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
+    /usr/bin/xattr -cr "$FINAL_APP_BUNDLE"
+    codesign --verify --deep --strict --verbose=2 "$FINAL_APP_BUNDLE"
 fi
 
-echo "Packaged app: $APP_BUNDLE"
+echo "Packaged app: $FINAL_APP_BUNDLE"
 echo "Installable zip: $ZIP_PATH"

@@ -29,11 +29,6 @@ struct TaskRow: View {
                 .frame(width: 8, height: 8)
                 .help(task.category?.name ?? "Uncategorized")
 
-            Image(systemName: "line.3.horizontal")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.tertiary)
-                .frame(width: 14)
-
             CheckBox(isOn: $task.isCompleted)
                 .onChange(of: task.isCompleted) { oldValue, newValue in
                     onCompletionChanged(task, oldValue, newValue)
@@ -84,24 +79,33 @@ struct TaskRow: View {
 
     @ViewBuilder
     private var titleContent: some View {
-        if isEditingTitle {
-            InlineTaskTitleTextField(
-                text: $draftTitle,
-                focusRequest: editFocusRequest,
-                onCommit: commitTitleEdit,
-                onCancel: cancelTitleEdit
-            )
-            .frame(maxWidth: .infinity, minHeight: 22)
-        } else {
-            FloatingTaskTitle(
-                title: task.title,
-                isCompleted: task.isCompleted,
-                fontSize: 15,
-                fontWeight: .regular,
-                onDoubleClick: beginTitleEdit
-            )
-            .frame(maxWidth: .infinity, minHeight: 22)
+        VStack(alignment: .leading, spacing: 2) {
+            if isEditingTitle {
+                InlineTaskTitleTextField(
+                    text: $draftTitle,
+                    focusRequest: editFocusRequest,
+                    onCommit: commitTitleEdit,
+                    onCancel: cancelTitleEdit
+                )
+                .frame(maxWidth: .infinity, minHeight: 22)
+            } else {
+                FloatingTaskTitle(
+                    title: task.title,
+                    isCompleted: task.isCompleted,
+                    fontSize: 15,
+                    fontWeight: .regular,
+                    onDoubleClick: beginTitleEdit
+                )
+                .frame(maxWidth: .infinity, minHeight: 22)
+            }
+            if let deadline = DeadlineFormatting.text(for: task) {
+                Text(deadline)
+                    .font(.caption)
+                    .foregroundStyle(isOverdue ? Color.orange : Color.secondary)
+            }
         }
+        .foregroundStyle(.primary)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func beginTitleEdit() {
@@ -206,6 +210,10 @@ struct TaskRow: View {
     private var confirmDeleteMessage: String {
         let title = task.title.trimmingCharacters(in: .whitespacesAndNewlines)
         return title.isEmpty ? "This task will be removed." : "\"\(title)\" will be removed."
+    }
+
+    private var isOverdue: Bool {
+        (task.effectiveDeadline(in: calendar) ?? .distantFuture) < .now
     }
 
 }

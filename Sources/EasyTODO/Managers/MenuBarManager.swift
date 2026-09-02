@@ -187,13 +187,9 @@ final class MenuBarManager: NSObject {
 
         do {
             let context = modelContainer.mainContext
-            _ = try TaskDayMaintenance.rolloverUnfinishedTasksToToday(in: context)
             let tasks = try context.fetch(FetchDescriptor<TodoTask>())
-            let todayTasks = tasks.filter { task in
-                task.isScheduled(on: .now)
-            }
-            let completedCount = todayTasks.filter(\.isCompleted).count
-            button.title = "\(completedCount) / \(todayTasks.count)"
+            let pendingCount = tasks.filter { !$0.isCompleted }.count
+            button.title = "\(pendingCount)"
         } catch {
             button.title = "- / -"
             NSLog("EasyTODO failed to refresh menu bar status: \(error)")

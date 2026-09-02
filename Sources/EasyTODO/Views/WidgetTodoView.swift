@@ -2,6 +2,33 @@ import Foundation
 import SwiftData
 import SwiftUI
 
+struct WidgetRootView: View {
+    @State private var state = WidgetWindowManager.shared.presentationState
+
+    var body: some View {
+        Group {
+            if state == .collapsed {
+                Button {
+                    WidgetWindowManager.shared.expandWidget()
+                } label: {
+                    Image(systemName: "checklist")
+                        .font(.system(size: 20, weight: .semibold))
+                        .frame(width: 50, height: 50)
+                        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Expand EasyTODO widget")
+                .modifier(WidgetGlassSurface(cornerRadius: 16))
+            } else {
+                WidgetTodoView()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .easyTODOWidgetPresentationChanged)) { notification in
+            if let newState = notification.object as? WidgetPresentationState { state = newState }
+        }
+    }
+}
+
 struct WidgetTodoView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -11,12 +38,9 @@ struct WidgetTodoView: View {
     @AppStorage(EasyTODOSettings.widgetCategoryFilter) private var storedFilter = "all"
     @State private var newTaskTitle = ""
     @State private var editingTask: TodoTask?
+    @State private var isCreatingTask = false
 
-    private var filter: TaskCategoryFilter {
-        if storedFilter == "uncategorized" { return .uncategorized }
-        if let id = UUID(uuidString: storedFilter) { return .category(id) }
-        return .all
-    }
+    private var filter: TaskCategoryFilter { TaskCategoryFilter(storedValue: storedFilter) }
     private var visibleTasks: [TodoTask] { TaskUrgencyOrdering.visibleTasks(from: tasks, filter: filter) }
 
     var body: some View {
@@ -27,10 +51,12 @@ struct WidgetTodoView: View {
             footer
         }
         .padding(13).frame(width: 276)
-        .modifier(WidgetGlassSurface())
+        .foregroundStyle(.primary)
+        .modifier(WidgetGlassSurface(cornerRadius: 20))
         .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .onTapGesture(count: 2) { WindowManager.shared.showMainWindow() }
         .sheet(item: $editingTask) { TaskEditorView(task: $0) }
+        .sheet(isPresented: $isCreatingTask) { TaskCreationView(initialCategoryID: selectedCategoryID) }
         .preferredColorScheme(preferredColorScheme)
     }
 
@@ -44,6 +70,10 @@ struct WidgetTodoView: View {
                 ForEach(categories) { Text($0.name).tag($0.id.uuidString) }
             }
             .labelsHidden().frame(maxWidth: 128).accessibilityLabel("Filter by category")
+            Button { WidgetWindowManager.shared.collapseWidget() } label: {
+                Image(systemName: "minus").frame(width: 22, height: 22).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain).help("Collapse widget").accessibilityLabel("Collapse widget")
         }
     }
 
@@ -51,6 +81,10 @@ struct WidgetTodoView: View {
         HStack(spacing: 7) {
             Image(systemName: "plus.circle.fill").foregroundStyle(.secondary)
             TextField("Add a task", text: $newTaskTitle).textFieldStyle(.plain).onSubmit(addTask)
+            Button { isCreatingTask = true } label: {
+                Image(systemName: "slider.horizontal.3")
+            }
+            .buttonStyle(.plain).help("Add with category and due date").accessibilityLabel("Add task with details")
         }
         .padding(.horizontal, 9).padding(.vertical, 7)
         .background(.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
@@ -117,17 +151,27 @@ struct WidgetTodoView: View {
         CompletionFeedbackPlayer.playTaskCompletedSound()
     }
     private func taskIsOverdue(_ task: TodoTask) -> Bool { (task.effectiveDeadline() ?? .distantFuture) < .now }
+    private var selectedCategoryID: UUID? {
+        if case let .category(id) = filter { return id }
+        return nil
+    }
     private var preferredColorScheme: ColorScheme? { (ThemeOption(rawValue: theme) ?? .light) == .light ? .light : .dark }
 }
 
 private struct WidgetGlassSurface: ViewModifier {
+    let cornerRadius: CGFloat
+
     func body(content: Content) -> some View {
         if #available(macOS 26.0, *) {
-            content.glassEffect(.regular, in: .rect(cornerRadius: 20)).shadow(color: .black.opacity(0.12), radius: 18, y: 8)
+            content.glassEffect(.regular, in: .rect(cornerRadius: cornerRadius)).shadow(color: .black.opacity(0.12), radius: 16, y: 7)
         } else {
-            content.background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                .overlay { RoundedRectangle(cornerRadius: 20).strokeBorder(.primary.opacity(0.10)) }
-                .shadow(color: .black.opacity(0.12), radius: 18, y: 8)
+            content
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .strokeBorder(.primary.opacity(0.12), lineWidth: 0.75)
+                }
+                .shadow(color: .black.opacity(0.14), radius: 14, y: 6)
         }
     }
 }

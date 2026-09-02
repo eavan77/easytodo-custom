@@ -12,32 +12,19 @@ struct MenuBarTodoView: View {
     @State private var isQuickAddPresented = false
     @State private var taskPendingDeletion: TodoTask?
 
-    private let calendar = Calendar.current
-    private let dayRefreshTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
-
-    private var todayTasks: [TodoTask] {
-        tasks.filter { task in
-            task.isScheduled(on: .now, calendar: calendar)
-        }
-    }
-
-    private var completedCount: Int {
-        todayTasks.filter(\.isCompleted).count
-    }
-
     private var orderedTasks: [TodoTask] {
-        TaskListOrdering.ordered(todayTasks)
+        TaskUrgencyOrdering.visibleTasks(from: tasks)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("Today")
+                Text("Up Next")
                     .font(.headline)
 
                 Spacer()
 
-                Text("\(completedCount) / \(todayTasks.count)")
+                Text("\(orderedTasks.count) pending")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -59,8 +46,8 @@ struct MenuBarTodoView: View {
 
             Divider()
 
-            if todayTasks.isEmpty {
-                Text("No tasks yet")
+            if orderedTasks.isEmpty {
+                Text("No pending tasks")
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
@@ -104,10 +91,6 @@ struct MenuBarTodoView: View {
         .contentShape(Rectangle())
         .onTapGesture(count: 2) {
             WindowManager.shared.showMainWindow()
-        }
-        .onAppear(perform: runDailyTaskMaintenance)
-        .onReceive(dayRefreshTimer) { _ in
-            runDailyTaskMaintenance()
         }
         .confirmationDialog(
             "Delete this task?",
@@ -199,12 +182,6 @@ struct MenuBarTodoView: View {
         let wasCompleted = task.isCompleted
         task.setCompleted(!task.isCompleted)
 
-        if !wasCompleted && task.isCompleted {
-            TaskListOrdering.moveCompletedTaskToFront(task, in: todayTasks)
-        } else if wasCompleted && !task.isCompleted {
-            TaskListOrdering.moveReactivatedTaskToEnd(task, in: todayTasks)
-        }
-
         saveChanges()
 
         if !wasCompleted && task.isCompleted {
@@ -238,16 +215,11 @@ struct MenuBarTodoView: View {
 
     private func addTask(title: String) -> Bool {
         do {
-            return try TaskCreation.addTask(title: title, in: modelContext, calendar: calendar) != nil
+            return try TaskCreation.addTask(title: title, in: modelContext) != nil
         } catch {
             assertionFailure("Unable to save menu bar task: \(error)")
             return false
         }
     }
 
-    private func runDailyTaskMaintenance() {
-        if TaskDayMaintenance.rolloverUnfinishedTasksToToday(tasks, calendar: calendar) {
-            saveChanges()
-        }
-    }
 }

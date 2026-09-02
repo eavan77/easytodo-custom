@@ -4,6 +4,12 @@ enum TaskCategoryFilter: Equatable {
     case all
     case uncategorized
     case category(UUID)
+
+    init(storedValue: String) {
+        if storedValue == "uncategorized" { self = .uncategorized }
+        else if let id = UUID(uuidString: storedValue) { self = .category(id) }
+        else { self = .all }
+    }
 }
 
 enum TaskUrgencyOrdering {

@@ -133,7 +133,14 @@ if command -v codesign >/dev/null 2>&1; then
 fi
 
 rm -f "$ZIP_PATH"
-ditto -c -k --sequesterRsrc --keepParent "$APP_BUNDLE" "$ZIP_PATH"
+COPYFILE_DISABLE=1 ditto -c -k --norsrc --keepParent "$APP_BUNDLE" "$ZIP_PATH"
+
+if command -v codesign >/dev/null 2>&1; then
+    # FileProvider-backed folders can reattach Finder metadata while archiving.
+    # Clean the generated bundle once more and verify the final on-disk result.
+    /usr/bin/xattr -cr "$APP_BUNDLE"
+    codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
+fi
 
 echo "Packaged app: $APP_BUNDLE"
 echo "Installable zip: $ZIP_PATH"

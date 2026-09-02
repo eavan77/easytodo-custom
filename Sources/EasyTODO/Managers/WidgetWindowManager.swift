@@ -10,6 +10,10 @@ final class WidgetWindowManager {
     private var widgetWindow: NSPanel?
     private var contextMenuController: WidgetContextMenuController?
     private var activationObservers: [NSObjectProtocol] = []
+    private(set) var presentationState: WidgetPresentationState = .hidden
+
+    private let expandedSize = NSSize(width: 276, height: 350)
+    private let collapsedSize = NSSize(width: 50, height: 50)
 
     private init() {
         let center = NotificationCenter.default
@@ -35,11 +39,12 @@ final class WidgetWindowManager {
         }
 
         if let widgetWindow {
+            expandWidget()
             show(window: widgetWindow)
             return
         }
 
-        let size = NSSize(width: 276, height: 350)
+        let size = expandedSize
         let panel = WidgetPanel(
             contentRect: preferredFrame(size: size),
             styleMask: [.borderless, .fullSizeContentView, .nonactivatingPanel],
@@ -60,16 +65,19 @@ final class WidgetWindowManager {
         panel.animationBehavior = .utilityWindow
 
         let hostingController = NSHostingController(
-            rootView: WidgetTodoView()
+            rootView: WidgetRootView()
                 .modelContainer(modelContainer)
         )
         hostingController.view.frame = NSRect(origin: .zero, size: size)
         hostingController.view.wantsLayer = true
         hostingController.view.layer?.isOpaque = false
         hostingController.view.layer?.backgroundColor = NSColor.clear.cgColor
+        hostingController.view.autoresizingMask = [.width, .height]
         panel.contentView = hostingController.view
 
         widgetWindow = panel
+        presentationState.expand()
+        notifyPresentationChanged()
         show(window: panel)
     }
 
@@ -89,7 +97,15 @@ final class WidgetWindowManager {
         menu.addItem(transparencyMenuItem(controller: controller))
         menu.addItem(.separator())
 
-        let closeItem = NSMenuItem(title: "Close Widget", action: #selector(WidgetContextMenuController.closeWidget), keyEquivalent: "")
+        let stateItem = NSMenuItem(
+            title: presentationState == .collapsed ? "Expand Widget" : "Collapse Widget",
+            action: #selector(WidgetContextMenuController.toggleCollapsed),
+            keyEquivalent: ""
+        )
+        stateItem.target = controller
+        menu.addItem(stateItem)
+
+        let closeItem = NSMenuItem(title: "Hide Widget", action: #selector(WidgetContextMenuController.closeWidget), keyEquivalent: "")
         closeItem.target = controller
         menu.addItem(closeItem)
 
@@ -106,7 +122,28 @@ final class WidgetWindowManager {
     }
 
     func closeWidget() {
+        presentationState.hide()
+        notifyPresentationChanged()
         widgetWindow?.orderOut(nil)
+    }
+
+    func collapseWidget() {
+        guard let panel = widgetWindow, presentationState != .collapsed else { return }
+        presentationState.collapse()
+        resize(panel, to: collapsedSize)
+        notifyPresentationChanged()
+    }
+
+    func expandWidget() {
+        guard let panel = widgetWindow else { showWidget(); return }
+        presentationState.expand()
+        resize(panel, to: expandedSize)
+        notifyPresentationChanged()
+        show(window: panel)
+    }
+
+    func toggleCollapsed() {
+        presentationState == .collapsed ? expandWidget() : collapseWidget()
     }
 
     private func show(window: NSPanel) {
@@ -137,7 +174,8 @@ final class WidgetWindowManager {
     private var targetAlphaValue: CGFloat {
         let key = NSApp.isActive ? EasyTODOSettings.widgetActiveOpacity : EasyTODOSettings.widgetInactiveOpacity
         let value = UserDefaults.standard.double(forKey: key)
-        return CGFloat(min(max(value, 0.20), 1.0))
+        let clamped = NSApp.isActive ? WidgetOpacityPolicy.clampedActive(value) : WidgetOpacityPolicy.clampedInactive(value)
+        return CGFloat(clamped)
     }
 
     private func transparencyMenuItem(controller: WidgetContextMenuController) -> NSMenuItem {
@@ -150,7 +188,7 @@ final class WidgetWindowManager {
         label.font = .systemFont(ofSize: 12, weight: .medium)
         label.textColor = .labelColor
 
-        let slider = NSSlider(value: currentValue, minValue: 0.25, maxValue: 0.70, target: controller, action: #selector(WidgetContextMenuController.changeTransparency(_:)))
+        let slider = NSSlider(value: currentValue, minValue: 0.05, maxValue: 0.50, target: controller, action: #selector(WidgetContextMenuController.changeTransparency(_:)))
         slider.frame = NSRect(x: 12, y: 6, width: 196, height: 24)
         slider.isContinuous = true
 
@@ -171,6 +209,19 @@ final class WidgetWindowManager {
         )
 
         return NSRect(origin: origin, size: size)
+    }
+
+    private func resize(_ panel: NSPanel, to size: NSSize) {
+        let center = NSPoint(x: panel.frame.midX, y: panel.frame.midY)
+        let visible = panel.screen?.visibleFrame ?? preferredScreen().visibleFrame
+        var origin = NSPoint(x: center.x - size.width / 2, y: center.y - size.height / 2)
+        origin.x = min(max(origin.x, visible.minX), visible.maxX - size.width)
+        origin.y = min(max(origin.y, visible.minY), visible.maxY - size.height)
+        panel.setFrame(NSRect(origin: origin, size: size), display: true, animate: !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+    }
+
+    private func notifyPresentationChanged() {
+        NotificationCenter.default.post(name: .easyTODOWidgetPresentationChanged, object: presentationState)
     }
 
     private func preferredScreen() -> NSScreen {
@@ -209,6 +260,10 @@ private final class WidgetContextMenuController: NSObject {
 
     @objc func closeWidget() {
         WidgetWindowManager.shared.closeWidget()
+    }
+
+    @objc func toggleCollapsed() {
+        WidgetWindowManager.shared.toggleCollapsed()
     }
 
     @objc func changeTransparency(_ sender: NSSlider) {

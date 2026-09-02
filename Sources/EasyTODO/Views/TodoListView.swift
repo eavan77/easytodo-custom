@@ -4,392 +4,170 @@ import SwiftUI
 
 struct TodoListView: View {
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.scenePhase) private var scenePhase
-    @Query(sort: [
-        SortDescriptor(\TodoTask.sortOrder),
-        SortDescriptor(\TodoTask.createdAt)
-    ]) private var tasks: [TodoTask]
+    @Query private var tasks: [TodoTask]
+    @Query(sort: \TaskCategory.sortOrder) private var categories: [TaskCategory]
 
     @AppStorage(EasyTODOSettings.alwaysOnTop) private var alwaysOnTop = true
     @AppStorage(EasyTODOSettings.hiddenDockIcon) private var hiddenDockIcon = false
     @AppStorage(EasyTODOSettings.showMenuBar) private var showMenuBar = true
     @AppStorage(EasyTODOSettings.transparency) private var transparency = 0.80
+    @AppStorage(EasyTODOSettings.widgetCategoryFilter) private var storedFilter = "all"
 
-    @State private var selectedDate = Date()
-    @State private var isCalendarPresented = false
-    @State private var isHeaderQuickAddPresented = false
+    @State private var isCreatingTask = false
+    @State private var isCategoriesPresented = false
+    @State private var isCompletedHistoryPresented = false
     @State private var deletedTaskToRestore: DeletedTaskSnapshot?
     @State private var undoKeyMonitor: Any?
     @State private var fireworksTrigger = 0
-    @State private var isCategoriesPresented = false
-    @State private var isCompletedHistoryPresented = false
 
-    private let calendar = Calendar.current
-    private let dayRefreshTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
-
-    private var completedCount: Int {
-        displayedTasks.filter(\.isCompleted).count
-    }
-
-    private var orderedTasks: [TodoTask] {
-        displayedTasks
-    }
-
-    private var displayedTasks: [TodoTask] {
-        TaskListOrdering.ordered(tasksScheduled(on: selectedDate))
-    }
-
-    private var hasActiveAndCompletedTasks: Bool {
-        displayedTasks.contains { !$0.isCompleted } && displayedTasks.contains { $0.isCompleted }
-    }
-
-    private var headerTitle: String {
-        if calendar.isDateInToday(selectedDate) {
-            return "Today's TODOs"
-        }
-
-        return selectedDate.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
-    }
+    private var filter: TaskCategoryFilter { TaskCategoryFilter(storedValue: storedFilter) }
+    private var displayedTasks: [TodoTask] { TaskUrgencyOrdering.visibleTasks(from: tasks, filter: filter) }
 
     var body: some View {
         ZStack {
-            noteSurface
-
+            neutralSurface
             VStack(spacing: 0) {
                 header
-
-                Divider()
-                    .padding(.horizontal, 14)
-
-                List {
-                    if displayedTasks.isEmpty {
-                        VStack(spacing: 8) {
-                            Image(systemName: "calendar.badge.plus")
-                                .font(.system(size: 24, weight: .medium))
-                                .foregroundStyle(.secondary)
-
-                            Text("No tasks for \(shortDate(for: selectedDate))")
-                                .font(.system(size: 14, weight: .semibold))
-
-                            Text("Use the + button to plan this day.")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(.secondary)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 36)
-                        .listRowInsets(EdgeInsets(top: 0, leading: 12, bottom: 0, trailing: 10))
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
-                    }
-
-                    ForEach(orderedTasks) { task in
-                        VStack(spacing: 0) {
-                            if shouldShowCompletedSeparator(before: task) {
-                                completedSeparator
-                            }
-
-                            TaskRow(
-                                task: task,
-                                onUpdate: saveChanges,
-                                onCompletionChanged: handleCompletionChange,
-                                onMoveToDate: moveTask,
-                                onRepeatRuleChanged: updateRepeatRule
-                            ) {
-                                delete(task)
-                            }
-                        }
-                        .listRowInsets(EdgeInsets(top: 0, leading: 12, bottom: 0, trailing: 10))
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
-                    }
-                    .onMove(perform: moveTasks)
-                }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
-
+                Divider().padding(.horizontal, 14)
+                taskList
             }
             CompletionFireworksView(trigger: fireworksTrigger)
         }
-        .frame(minWidth: 280, idealWidth: 340, minHeight: 320, idealHeight: 480)
+        .frame(minWidth: 310, idealWidth: 380, minHeight: 340, idealHeight: 520)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .contextMenu {
-            Button {
-                WindowManager.shared.closeMainWindow()
-            } label: {
-                Label("Close Window", systemImage: "xmark")
-            }
-
-            Button {
-                WindowManager.shared.minimizeMainWindow()
-            } label: {
-                Label("Minimize Window", systemImage: "minus")
-            }
-
-            Button {
-                WindowManager.shared.zoomMainWindow()
-            } label: {
-                Label("Zoom Window", systemImage: "arrow.up.left.and.arrow.down.right")
-            }
-
-            Button {
-                WidgetWindowManager.shared.showWidget()
-                WindowManager.shared.closeMainWindow()
-            } label: {
-                Label("Change to Widget", systemImage: "rectangle.on.rectangle")
-            }
-
-            Divider()
-
-            Button {
-                alwaysOnTop.toggle()
-                WindowManager.shared.applyWindowSettings()
-            } label: {
-                Label("Always on Top", systemImage: alwaysOnTop ? "checkmark.circle.fill" : "circle")
-            }
-
-            Menu {
-                transparencyMenuButton(title: "100%", value: 1.0)
-                transparencyMenuButton(title: "80%", value: 0.80)
-                transparencyMenuButton(title: "50%", value: 0.50)
-            } label: {
-                Label("Transparency: \(transparencyTitle)", systemImage: "slider.horizontal.3")
-            }
-
-            if deletedTaskToRestore != nil {
-                Divider()
-
-                Button {
-                    undoLastDeletedTask()
-                } label: {
-                    Label("Undo Delete", systemImage: "arrow.uturn.backward")
-                }
-            }
-        }
-        .background(
-            WindowAccessor { window in
-                WindowManager.shared.configureMainWindow(window)
-            }
-        )
-        .sheet(isPresented: $isCalendarPresented) {
-            CalendarPlannerView(
-                tasks: tasks,
-                selectedDate: $selectedDate,
-                onAddTask: { title, date in
-                    _ = addTask(title: title, for: date)
-                },
-                onUpdate: saveChanges,
-                onCompletionChanged: handleCompletionChange,
-                onDelete: delete,
-                onMoveTasks: { date, source, destination in
-                    moveTasks(on: date, from: source, to: destination)
-                }
-            )
+        .background(WindowAccessor { WindowManager.shared.configureMainWindow($0) })
+        .contextMenu { windowContextMenu }
+        .sheet(isPresented: $isCreatingTask) {
+            TaskCreationView(initialCategoryID: selectedCategoryID)
         }
         .sheet(isPresented: $isCategoriesPresented) { CategoryManagementView() }
         .sheet(isPresented: $isCompletedHistoryPresented) { CompletedTasksView() }
         .onAppear {
-            runDailyTaskMaintenance()
             installUndoDeleteKeyboardMonitor()
             WindowManager.shared.applyWindowSettings()
             WindowManager.shared.applyActivationPolicy()
         }
-        .onDisappear {
-            removeUndoDeleteKeyboardMonitor()
-        }
+        .onDisappear { removeUndoDeleteKeyboardMonitor() }
         .onReceive(NotificationCenter.default.publisher(for: .easyTODOFocusNewTask)) { _ in
             WindowManager.shared.showMainWindow()
-            focusNewTaskInput()
+            isCreatingTask = true
         }
-        .onReceive(NotificationCenter.default.publisher(for: .easyTODOUndoDeleteTask)) { _ in
-            undoLastDeletedTask()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.willResignActiveNotification)) { _ in
-            saveChanges()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
-            saveChanges()
-        }
-        .onReceive(dayRefreshTimer) { _ in
-            runDailyTaskMaintenance()
-        }
-        .onChange(of: alwaysOnTop) { _, _ in
-            WindowManager.shared.applyWindowSettings()
-        }
-        .onChange(of: transparency) { _, _ in
-            WindowManager.shared.applyWindowSettings()
-        }
-        .onChange(of: hiddenDockIcon) { _, _ in
-            WindowManager.shared.applyActivationPolicy()
-        }
-        .onChange(of: showMenuBar) { _, _ in
-            WindowManager.shared.applyActivationPolicy()
-        }
-        .onChange(of: scenePhase) { _, newPhase in
-            if newPhase == .active {
-                runDailyTaskMaintenance()
-            } else {
-                saveChanges()
-            }
-        }
-    }
-
-    private var noteSurface: some View {
-        ZStack {
-            Color(nsColor: .windowBackgroundColor)
-
-            BlurBackground()
-                .opacity(0.10)
-
-            LinearGradient(
-                colors: [
-                    Color(red: 0.98, green: 0.78, blue: 0.38).opacity(0.16),
-                    Color(red: 0.95, green: 0.89, blue: 0.70).opacity(0.08),
-                    Color.clear
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        }
-        .ignoresSafeArea()
-        .contentShape(Rectangle())
-        .onTapGesture(count: 2, perform: switchToWidget)
+        .onReceive(NotificationCenter.default.publisher(for: .easyTODOUndoDeleteTask)) { _ in undoLastDeletedTask() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.willResignActiveNotification)) { _ in saveChanges() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in saveChanges() }
+        .onChange(of: alwaysOnTop) { _, _ in WindowManager.shared.applyWindowSettings() }
+        .onChange(of: transparency) { _, _ in WindowManager.shared.applyWindowSettings() }
+        .onChange(of: hiddenDockIcon) { _, _ in WindowManager.shared.applyActivationPolicy() }
+        .onChange(of: showMenuBar) { _, _ in WindowManager.shared.applyActivationPolicy() }
     }
 
     private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Button {
-                isCalendarPresented = true
-            } label: {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Text(headerTitle)
-                            .font(.system(size: 17, weight: .semibold, design: .default))
-
-                        Image(systemName: "calendar")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Text("\(completedCount) / \(displayedTasks.count) complete - Open calendar")
-                        .font(.system(size: 12, weight: .medium, design: .default))
-                        .foregroundStyle(.secondary)
+                    Text("Tasks").font(.system(size: 19, weight: .semibold))
+                    Text("\(displayedTasks.count) pending").font(.caption).foregroundStyle(.secondary)
                 }
+                Spacer()
+                iconButton("minus", label: "Minimize") { WindowManager.shared.minimizeMainWindow() }
+                iconButton("clock.arrow.circlepath", label: "Completed task history") { isCompletedHistoryPresented = true }
+                iconButton("tag", label: "Manage categories") { isCategoriesPresented = true }
+                iconButton("plus", label: "Add task") { isCreatingTask = true }
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Open calendar")
-
-            Spacer()
-
-            Button { isCompletedHistoryPresented = true } label: {
-                Image(systemName: "clock.arrow.circlepath").frame(width: 28, height: 28)
-            }
-            .buttonStyle(.plain).help("Completed tasks").accessibilityLabel("Completed task history")
-
-            Button { isCategoriesPresented = true } label: {
-                Image(systemName: "tag").frame(width: 28, height: 28)
-            }
-            .buttonStyle(.plain).help("Manage categories").accessibilityLabel("Manage categories")
-
-            Button(action: showHeaderQuickAdd) {
-                Image(systemName: "plus")
-                    .font(.system(size: 14, weight: .semibold))
-                    .frame(width: 32, height: 32)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Add task")
-            .popover(isPresented: $isHeaderQuickAddPresented, arrowEdge: .top) {
-                HeaderQuickAddPopover(
-                    onSubmit: { title in
-                        addTask(title: title, for: selectedDate) != nil
-                    },
-                    onCancel: dismissHeaderQuickAdd
-                )
+            HStack {
+                Picker("Category", selection: $storedFilter) {
+                    Text("All").tag("all")
+                    Text("Uncategorized").tag("uncategorized")
+                    ForEach(categories) { Text($0.name).tag($0.id.uuidString) }
+                }
+                .frame(maxWidth: 210).accessibilityLabel("Filter tasks by category")
+                Spacer()
+                Button { WidgetWindowManager.shared.showWidget() } label: {
+                    Label("Floating Widget", systemImage: "rectangle.on.rectangle")
+                }
+                .buttonStyle(.borderless)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 16)
-        .padding(.bottom, 12)
+        .padding(.horizontal, 16).padding(.vertical, 14)
     }
 
-    private func showHeaderQuickAdd() {
-        WindowManager.shared.showMainWindow()
-        isHeaderQuickAddPresented = true
+    private var taskList: some View {
+        List {
+            if displayedTasks.isEmpty {
+                ContentUnavailableView("No pending tasks", systemImage: "checkmark.circle", description: Text("Add a task to get started."))
+                    .frame(maxWidth: .infinity).padding(.vertical, 42)
+                    .listRowSeparator(.hidden).listRowBackground(Color.clear)
+            }
+            ForEach(displayedTasks) { task in
+                TaskRow(task: task, onUpdate: saveChanges, onCompletionChanged: handleCompletionChange) {
+                    delete(task)
+                }
+                .listRowInsets(EdgeInsets(top: 0, leading: 12, bottom: 0, trailing: 10))
+                .listRowSeparator(.hidden).listRowBackground(Color.clear)
+            }
+        }
+        .listStyle(.plain).scrollContentBackground(.hidden)
     }
 
-    private func dismissHeaderQuickAdd() {
-        isHeaderQuickAddPresented = false
+    private var neutralSurface: some View {
+        Rectangle().fill(.ultraThinMaterial).ignoresSafeArea()
+            .overlay(Color(nsColor: .windowBackgroundColor).opacity(0.18))
+            .contentShape(Rectangle())
     }
 
-    private func switchToWidget() {
-        WidgetWindowManager.shared.showWidget()
-        WindowManager.shared.closeMainWindow()
-    }
-
-    private var transparencyTitle: String {
-        "\(Int((transparency * 100).rounded()))%"
-    }
-
-    private func transparencyMenuButton(title: String, value: Double) -> some View {
-        Button {
-            transparency = value
-            WindowManager.shared.applyWindowSettings()
-        } label: {
-            Label(title, systemImage: isSelectedTransparency(value) ? "checkmark.circle.fill" : "circle")
+    @ViewBuilder private var windowContextMenu: some View {
+        Button { WindowManager.shared.closeMainWindow() } label: { Label("Close Window", systemImage: "xmark") }
+        Button { WindowManager.shared.minimizeMainWindow() } label: { Label("Minimize Window", systemImage: "minus") }
+        Button { WidgetWindowManager.shared.showWidget(); WindowManager.shared.closeMainWindow() } label: {
+            Label("Change to Widget", systemImage: "rectangle.on.rectangle")
+        }
+        Divider()
+        Button { alwaysOnTop.toggle(); WindowManager.shared.applyWindowSettings() } label: {
+            Label("Always on Top", systemImage: alwaysOnTop ? "checkmark.circle.fill" : "circle")
+        }
+        if deletedTaskToRestore != nil {
+            Divider()
+            Button { undoLastDeletedTask() } label: { Label("Undo Delete", systemImage: "arrow.uturn.backward") }
         }
     }
 
-    private func isSelectedTransparency(_ value: Double) -> Bool {
-        abs(transparency - value) < 0.001
+    private func iconButton(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) { Image(systemName: symbol).frame(width: 28, height: 28).contentShape(Rectangle()) }
+            .buttonStyle(.plain).help(label).accessibilityLabel(label)
     }
 
-    private var completedSeparator: some View {
-        Rectangle()
-            .fill(.secondary.opacity(0.24))
-            .frame(height: 1)
-            .padding(.vertical, 9)
-            .padding(.leading, 28)
+    private var selectedCategoryID: UUID? {
+        if case let .category(id) = filter { return id }
+        return nil
     }
 
-    private func shouldShowCompletedSeparator(before task: TodoTask) -> Bool {
-        guard hasActiveAndCompletedTasks, task.isCompleted else { return false }
-        return orderedTasks.first(where: \.isCompleted) === task
-    }
-
-    private func focusNewTaskInput() {
-        showHeaderQuickAdd()
+    private func handleCompletionChange(task: TodoTask, oldValue: Bool, newValue: Bool) {
+        task.completedAt = newValue ? .now : nil
+        saveChanges()
+        guard !oldValue && newValue else { return }
+        CompletionFeedbackPlayer.playTaskCompletedSound()
+        fireworksTrigger += 1
     }
 
     private func delete(_ task: TodoTask) {
-        dismissHeaderQuickAdd()
-        deletedTaskToRestore = DeletedTaskSnapshot(task: task, calendar: calendar)
+        deletedTaskToRestore = DeletedTaskSnapshot(task: task)
         modelContext.delete(task)
         saveChanges()
     }
 
     private func undoLastDeletedTask() {
-        guard let deletedTaskToRestore else { return }
-
-        let restoredTask = deletedTaskToRestore.task()
-        modelContext.insert(restoredTask)
-        selectedDate = deletedTaskToRestore.scheduledDate ?? .now
-        self.deletedTaskToRestore = nil
+        guard let snapshot = deletedTaskToRestore else { return }
+        modelContext.insert(snapshot.task())
+        deletedTaskToRestore = nil
         saveChanges()
     }
 
     private func installUndoDeleteKeyboardMonitor() {
         guard undoKeyMonitor == nil else { return }
-
         undoKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            if isHeaderQuickAddPresented, event.keyCode == 53 {
-                dismissHeaderQuickAdd()
-                return nil
-            }
-
-            guard isUndoDeleteShortcut(event), deletedTaskToRestore != nil else {
-                return event
-            }
-
+            guard event.charactersIgnoringModifiers?.lowercased() == "z",
+                  event.modifierFlags.intersection(.deviceIndependentFlagsMask).contains(.control),
+                  deletedTaskToRestore != nil else { return event }
             undoLastDeletedTask()
             return nil
         }
@@ -397,103 +175,13 @@ struct TodoListView: View {
 
     private func removeUndoDeleteKeyboardMonitor() {
         guard let undoKeyMonitor else { return }
-
         NSEvent.removeMonitor(undoKeyMonitor)
         self.undoKeyMonitor = nil
     }
 
-    private func isUndoDeleteShortcut(_ event: NSEvent) -> Bool {
-        guard event.charactersIgnoringModifiers?.lowercased() == "z" else {
-            return false
-        }
-
-        return event.modifierFlags.intersection(.deviceIndependentFlagsMask).contains(.control)
-    }
-
-    private func moveTasks(from source: IndexSet, to destination: Int) {
-        moveTasks(on: selectedDate, from: source, to: destination)
-    }
-
-    private func moveTasks(on date: Date, from source: IndexSet, to destination: Int) {
-        TaskListOrdering.moveTasks(from: source, to: destination, in: tasksScheduled(on: date))
-        saveChanges()
-    }
-
-    private func moveTask(_ task: TodoTask, to date: Date) {
-        TaskScheduling.move(task, to: date, among: tasks, calendar: calendar)
-        saveChanges()
-    }
-
-    private func updateRepeatRule(_ task: TodoTask, to repeatRule: TaskRepeatRule) {
-        do {
-            try TaskRepeatScheduler.setRepeatRule(
-                repeatRule,
-                for: task,
-                tasks: tasks,
-                in: modelContext,
-                calendar: calendar
-            )
-        } catch {
-            assertionFailure("Unable to update task repeat rule: \(error)")
-        }
-    }
-
-    private func handleCompletionChange(task: TodoTask, oldValue: Bool, newValue: Bool) {
-        task.completedAt = newValue ? .now : nil
-        let taskDate = task.scheduledDay(in: calendar)
-
-        if !oldValue && newValue {
-            TaskListOrdering.moveCompletedTaskToFront(task, in: tasksScheduled(on: taskDate))
-        } else if oldValue && !newValue {
-            TaskListOrdering.moveReactivatedTaskToEnd(task, in: tasksScheduled(on: taskDate))
-        }
-
-        saveChanges()
-
-        guard !oldValue && newValue else { return }
-
-        CompletionFeedbackPlayer.playTaskCompletedSound()
-        fireworksTrigger += 1
-    }
-
-    private func addTask(title: String, for date: Date) -> TodoTask? {
-        do {
-            let task = try TaskCreation.addTask(title: title, scheduledDate: date, in: modelContext, calendar: calendar)
-
-            return task
-        } catch {
-            assertionFailure("Unable to save task: \(error)")
-            return nil
-        }
-    }
-
-    private func tasksScheduled(on date: Date) -> [TodoTask] {
-        tasks.filter { task in
-            task.isScheduled(on: date, calendar: calendar)
-        }
-    }
-
-    private func runDailyTaskMaintenance() {
-        let today = calendar.startOfDay(for: .now)
-        if selectedDate < today {
-            selectedDate = today
-        }
-    }
-
-    private func shortDate(for date: Date) -> String {
-        if calendar.isDateInToday(date) {
-            return "Today"
-        }
-
-        return date.formatted(.dateTime.month(.abbreviated).day())
-    }
-
     private func saveChanges() {
-        do {
-            try modelContext.save()
-        } catch {
-            assertionFailure("Unable to save tasks: \(error)")
-        }
+        do { try modelContext.save() }
+        catch { assertionFailure("Unable to save tasks: \(error)") }
     }
 }
 
@@ -503,40 +191,22 @@ private struct DeletedTaskSnapshot {
     let sortOrder: Int
     let createdAt: Date
     let scheduledDate: Date?
-    let priority: TaskPriority
     let hasExplicitDueTime: Bool
     let completedAt: Date?
     let category: TaskCategory?
+    let priority: TaskPriority
     let repeatRule: TaskRepeatRule
     let recurrenceGroupID: String?
 
-    init(task: TodoTask, calendar: Calendar) {
-        title = task.title
-        isCompleted = task.isCompleted
-        sortOrder = task.sortOrder
-        createdAt = task.createdAt
-        scheduledDate = task.scheduledDate
-        priority = task.priority
-        hasExplicitDueTime = task.hasExplicitDueTime
-        completedAt = task.completedAt
-        category = task.category
-        repeatRule = task.repeatRule
-        recurrenceGroupID = task.recurrenceGroupID
+    init(task: TodoTask) {
+        title = task.title; isCompleted = task.isCompleted; sortOrder = task.sortOrder; createdAt = task.createdAt
+        scheduledDate = task.scheduledDate; hasExplicitDueTime = task.hasExplicitDueTime; completedAt = task.completedAt
+        category = task.category; priority = task.priority; repeatRule = task.repeatRule; recurrenceGroupID = task.recurrenceGroupID
     }
 
     func task() -> TodoTask {
-        TodoTask(
-            title: title,
-            isCompleted: isCompleted,
-            sortOrder: sortOrder,
-            createdAt: createdAt,
-            scheduledDate: scheduledDate,
-            hasExplicitDueTime: hasExplicitDueTime,
-            completedAt: completedAt,
-            category: category,
-            priority: priority,
-            repeatRule: repeatRule,
-            recurrenceGroupID: recurrenceGroupID
-        )
+        TodoTask(title: title, isCompleted: isCompleted, sortOrder: sortOrder, createdAt: createdAt,
+                 scheduledDate: scheduledDate, hasExplicitDueTime: hasExplicitDueTime, completedAt: completedAt,
+                 category: category, priority: priority, repeatRule: repeatRule, recurrenceGroupID: recurrenceGroupID)
     }
 }

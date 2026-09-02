@@ -135,6 +135,40 @@ final class EasyTODOTests: XCTestCase {
                        ["Overdue", "Upcoming", "Later", "No deadline"])
     }
 
+    func testPrimaryGlobalListIncludesUnfinishedTasksAcrossCalendarDays() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let today = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 9, day: 2, hour: 12)))
+        let tomorrow = try XCTUnwrap(calendar.date(byAdding: .day, value: 1, to: today))
+        let nextWeek = try XCTUnwrap(calendar.date(byAdding: .day, value: 7, to: today))
+        let tasks = [
+            TodoTask(title: "Today", scheduledDate: today),
+            TodoTask(title: "Tomorrow", scheduledDate: tomorrow),
+            TodoTask(title: "Next week", scheduledDate: nextWeek),
+            TodoTask(title: "Whenever")
+        ]
+
+        XCTAssertEqual(TaskUrgencyOrdering.visibleTasks(from: tasks, now: today, calendar: calendar).map(\.title),
+                       ["Today", "Tomorrow", "Next week", "Whenever"])
+    }
+
+    func testWidgetOpacityPolicyAllowsVeryLowInactiveOpacity() {
+        XCTAssertEqual(WidgetOpacityPolicy.defaultActive, 1.0)
+        XCTAssertEqual(WidgetOpacityPolicy.defaultInactive, 0.08, accuracy: 0.001)
+        XCTAssertEqual(WidgetOpacityPolicy.clampedInactive(0.05), 0.05, accuracy: 0.001)
+        XCTAssertEqual(WidgetOpacityPolicy.clampedInactive(0.01), 0.05, accuracy: 0.001)
+        XCTAssertEqual(WidgetOpacityPolicy.clampedActive(0.40), 0.60, accuracy: 0.001)
+    }
+
+    func testWidgetPresentationStateSupportsThreeDistinctStates() {
+        var state = WidgetPresentationState.expanded
+        state.collapse()
+        XCTAssertEqual(state, .collapsed)
+        state.hide()
+        XCTAssertEqual(state, .hidden)
+        state.expand()
+        XCTAssertEqual(state, .expanded)
+    }
+
     func testDateOnlyDeadlineUsesEndOfLocalDay() throws {
         let calendar = Calendar(identifier: .gregorian)
         let day = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 9, day: 2, hour: 8)))

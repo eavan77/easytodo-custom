@@ -1,12 +1,14 @@
+import AppKit
 import Foundation
 import SwiftData
 import SwiftUI
 
 struct WidgetRootView: View {
     @State private var visibility = WidgetWindowManager.shared.hoverState.visibility
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        Group {
+        ZStack(alignment: .topTrailing) {
             if visibility != .expanded {
                 Button {
                     WidgetWindowManager.shared.pointerEntered()
@@ -15,11 +17,15 @@ struct WidgetRootView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Open EasyTODO tasks")
-                .modifier(WidgetGlassSurface(cornerRadius: 13, compact: true))
+                .modifier(WidgetGlassSurface(cornerRadius: 20, compact: true))
+                .transition(.opacity.combined(with: .scale(scale: 0.72, anchor: .topTrailing)))
             } else {
                 WidgetTodoView()
+                    .transition(.opacity.combined(with: .scale(scale: 0.78, anchor: .topTrailing)))
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+        .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.88), value: visibility)
         .onReceive(NotificationCenter.default.publisher(for: .easyTODOWidgetPresentationChanged)) { notification in
             if let newVisibility = notification.object as? WidgetHoverState.Visibility { visibility = newVisibility }
         }
@@ -71,6 +77,10 @@ struct WidgetTodoView: View {
 
     private var header: some View {
         HStack(spacing: 8) {
+            WidgetDragHandle()
+                .frame(width: 24, height: 18)
+                .help("Drag widget")
+                .accessibilityLabel("Drag widget")
             Label("Up Next", systemImage: "checklist").font(.system(size: 14, weight: .semibold))
             Spacer()
             Picker("Category", selection: $storedFilter) {
@@ -126,12 +136,24 @@ struct WidgetTodoView: View {
                 }
             }
             Spacer(minLength: 0)
-            Button { editingTask = task } label: { Image(systemName: "ellipsis") }
-                .buttonStyle(.plain).foregroundStyle(.secondary).accessibilityLabel("Edit \(task.title)")
+            Menu {
+                Button("Edit", systemImage: "pencil") { editingTask = task }
+                Divider()
+                Button("Delete", systemImage: "trash", role: .destructive) { delete(task) }
+            } label: {
+                Image(systemName: "ellipsis")
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .foregroundStyle(.secondary)
+            .accessibilityLabel("Actions for \(task.title)")
         }
         .padding(.horizontal, 9).padding(.vertical, 7)
         .background(.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .contextMenu { Button("Edit") { editingTask = task } }
+        .contextMenu {
+            Button("Edit", systemImage: "pencil") { editingTask = task }
+            Button("Delete", systemImage: "trash", role: .destructive) { delete(task) }
+        }
     }
 
     private var emptyState: some View {
@@ -158,6 +180,16 @@ struct WidgetTodoView: View {
         try? modelContext.save()
         CompletionFeedbackPlayer.playTaskCompletedSound()
     }
+    private func delete(_ task: TodoTask) {
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.22)) {
+            modelContext.delete(task)
+        }
+        do {
+            try modelContext.save()
+        } catch {
+            assertionFailure("Unable to delete widget task: \(error)")
+        }
+    }
     private func taskIsOverdue(_ task: TodoTask) -> Bool { (task.effectiveDeadline() ?? .distantFuture) < .now }
     private var selectedCategoryID: UUID? {
         if case let .category(id) = filter { return id }
@@ -172,7 +204,7 @@ private struct PremiumLauncherView: View {
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
+            Circle()
                 .fill(
                     LinearGradient(
                         colors: [Color(white: 0.24), Color(white: 0.075), Color.black.opacity(0.96)],
@@ -181,7 +213,7 @@ private struct PremiumLauncherView: View {
                     )
                 )
 
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            Circle()
                 .fill(
                     LinearGradient(
                         colors: [.white.opacity(0.22), .clear, .black.opacity(0.26)],
@@ -213,15 +245,21 @@ private struct PremiumLauncherView: View {
             .blendMode(.screen)
         }
         .overlay {
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
+            Circle()
                 .stroke(
                     LinearGradient(colors: [.white.opacity(0.48), .white.opacity(0.08), .black.opacity(0.65)], startPoint: .topLeading, endPoint: .bottomTrailing),
                     lineWidth: 0.8
                 )
         }
-        .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .overlay {
+            Circle()
+                .stroke(Color(red: 1.0, green: 0.73, blue: 0.82).opacity(0.98), lineWidth: 1.6)
+                .shadow(color: Color(red: 1.0, green: 0.68, blue: 0.79).opacity(0.62), radius: 2.5)
+                .padding(1)
+        }
+        .clipShape(Circle())
         .frame(width: 40, height: 40)
-        .contentShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .contentShape(Circle())
         .onAppear {
             guard !reduceMotion else { return }
             withAnimation(.linear(duration: 1.0).delay(3.2).repeatForever(autoreverses: false)) {
@@ -237,16 +275,50 @@ private struct WidgetGlassSurface: ViewModifier {
 
     func body(content: Content) -> some View {
         if #available(macOS 26.0, *) {
-            content.glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
-                .shadow(color: .black.opacity(compact ? 0.08 : 0.12), radius: compact ? 5 : 16, y: compact ? 2 : 7)
+            if compact {
+                content.glassEffect(.regular, in: .circle)
+                    .shadow(color: .black.opacity(0.10), radius: 5, y: 2)
+            } else {
+                content.glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
+                    .shadow(color: .black.opacity(0.12), radius: 16, y: 7)
+            }
         } else {
-            content
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-                .overlay {
+            if compact {
+                content
+                    .background(.ultraThinMaterial, in: Circle())
+                    .shadow(color: .black.opacity(0.10), radius: 5, y: 2)
+            } else {
+                content
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                    .overlay {
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                         .strokeBorder(.primary.opacity(0.12), lineWidth: 0.75)
-                }
-                .shadow(color: .black.opacity(compact ? 0.08 : 0.14), radius: compact ? 5 : 14, y: compact ? 2 : 6)
+                    }
+                    .shadow(color: .black.opacity(0.14), radius: 14, y: 6)
+            }
         }
     }
+}
+
+private struct WidgetDragHandle: NSViewRepresentable {
+    func makeNSView(context: Context) -> WidgetDragHandleNSView { WidgetDragHandleNSView() }
+    func updateNSView(_ nsView: WidgetDragHandleNSView, context: Context) {}
+}
+
+private final class WidgetDragHandleNSView: NSView {
+    override func mouseDown(with event: NSEvent) {
+        guard let window else { return }
+        WidgetWindowManager.shared.beginWidgetDrag()
+        window.performDrag(with: event)
+        WidgetWindowManager.shared.finishWidgetDrag()
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let bar = NSBezierPath(roundedRect: NSRect(x: 4, y: bounds.midY - 1, width: max(8, bounds.width - 8), height: 2), xRadius: 1, yRadius: 1)
+        NSColor.secondaryLabelColor.withAlphaComponent(0.42).setFill()
+        bar.fill()
+    }
+
+    override func accessibilityRole() -> NSAccessibility.Role? { .handle }
+    override func accessibilityLabel() -> String? { "Drag widget" }
 }

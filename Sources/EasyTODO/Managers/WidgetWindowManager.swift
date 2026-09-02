@@ -10,13 +10,17 @@ final class WidgetWindowManager {
     private var widgetWindow: NSPanel?
     private var contextMenuController: WidgetContextMenuController?
     private var pendingCollapse: DispatchWorkItem?
+    private var pendingVisualCollapse: DispatchWorkItem?
     private var menuObservers: [NSObjectProtocol] = []
     private(set) var hoverState = WidgetHoverState()
+    private var topRightAnchor: CGPoint?
+    private let positionStore = WidgetPositionStore()
 
     private let expandedSize = NSSize(width: 276, height: 350)
     private let launcherSize = NSSize(width: 40, height: 40)
     private let edgeInset: CGFloat = 16
     private let collapseDelay = 0.45
+    private let presentationDuration = 0.28
 
     private init() {
         let center = NotificationCenter.default
@@ -47,8 +51,9 @@ final class WidgetWindowManager {
 
         guard let panel = widgetWindow else { return }
         cancelPendingCollapse()
+        cancelPendingVisualCollapse()
         hoverState.show()
-        transition(panel, to: .launcher)
+        applyGeometry(panel, visibility: .launcher, notify: true)
         panel.alphaValue = 1
         panel.orderFrontRegardless()
     }
@@ -59,6 +64,7 @@ final class WidgetWindowManager {
 
     func hideWidget() {
         cancelPendingCollapse()
+        cancelPendingVisualCollapse()
         hoverState.hide()
         notifyPresentationChanged()
         widgetWindow?.orderOut(nil)
@@ -70,7 +76,7 @@ final class WidgetWindowManager {
         let wasLauncher = hoverState.visibility == .launcher
         hoverState.pointerEntered()
         if wasLauncher, let panel = widgetWindow {
-            transition(panel, to: .expanded)
+            expand(panel)
         }
     }
 
@@ -87,6 +93,24 @@ final class WidgetWindowManager {
     func endChildInteraction() {
         hoverState.endInteraction()
         scheduleCollapseIfNeeded()
+    }
+
+    func beginWidgetDrag() {
+        beginChildInteraction()
+    }
+
+    func finishWidgetDrag() {
+        guard let panel = widgetWindow else {
+            endChildInteraction()
+            return
+        }
+        let screen = bestScreen(for: panel.frame)
+        let clampedFrame = WidgetPanelGeometry.clampedFrame(panel.frame, to: screen.visibleFrame)
+        panel.setFrame(clampedFrame, display: true, animate: false)
+        let anchor = WidgetPanelGeometry.topRightAnchor(for: clampedFrame)
+        topRightAnchor = anchor
+        positionStore.save(anchor)
+        endChildInteraction()
     }
 
     fileprivate func activateForInteraction() {
@@ -155,35 +179,68 @@ final class WidgetWindowManager {
         hoverState.collapseGracePeriodCompleted()
         guard hoverState.visibility == .launcher, let panel = widgetWindow else { return }
         pendingCollapse = nil
-        transition(panel, to: .launcher)
+        beginAnimatedCollapse(panel)
     }
 
     private func cancelPendingCollapse() {
         pendingCollapse?.cancel()
         pendingCollapse = nil
     }
+    private func cancelPendingVisualCollapse() {
+        pendingVisualCollapse?.cancel()
+        pendingVisualCollapse = nil
+    }
 
     private func launcherFrame(on screen: NSScreen) -> NSRect {
-        WidgetPanelGeometry.topRightFrame(size: launcherSize, visibleFrame: screen.visibleFrame, inset: edgeInset)
+        WidgetPanelGeometry.frame(size: launcherSize, topRightAnchor: resolvedAnchor(on: screen))
     }
 
     private func expandedFrame(on screen: NSScreen) -> NSRect {
-        WidgetPanelGeometry.topRightFrame(size: expandedSize, visibleFrame: screen.visibleFrame, inset: edgeInset)
+        WidgetPanelGeometry.frame(size: expandedSize, topRightAnchor: resolvedAnchor(on: screen))
+    }
+
+    private func resolvedAnchor(on screen: NSScreen) -> CGPoint {
+        let fallbackFrame = WidgetPanelGeometry.topRightFrame(size: expandedSize, visibleFrame: screen.visibleFrame, inset: edgeInset)
+        let requested = topRightAnchor ?? positionStore.load() ?? WidgetPanelGeometry.topRightAnchor(for: fallbackFrame)
+        let clamped = WidgetPanelGeometry.clampedTopRightAnchor(requested, expandedSize: expandedSize, visibleFrame: screen.visibleFrame)
+        topRightAnchor = clamped
+        return clamped
     }
 
     /// Frame and SwiftUI mode change under one disabled screen flush. This keeps
     /// expanded content out of the launcher's 40-point clipping bounds and keeps
     /// the shared top-right edge stationary during every transition.
-    private func transition(_ panel: NSPanel, to visibility: WidgetHoverState.Visibility) {
+    private func applyGeometry(_ panel: NSPanel, visibility: WidgetHoverState.Visibility, notify: Bool) {
         let screen = panel.screen ?? preferredScreen()
         let frame = visibility == .expanded ? expandedFrame(on: screen) : launcherFrame(on: screen)
         panel.disableScreenUpdatesUntilFlush()
         panel.setFrame(frame, display: false, animate: false)
         panel.contentView?.frame = NSRect(origin: .zero, size: frame.size)
-        notifyPresentationChanged()
+        if notify { notifyPresentationChanged() }
         panel.contentView?.needsLayout = true
         panel.contentView?.layoutSubtreeIfNeeded()
         panel.displayIfNeeded()
+    }
+    private func expand(_ panel: NSPanel) {
+        cancelPendingVisualCollapse()
+        applyGeometry(panel, visibility: .expanded, notify: true)
+    }
+
+    /// The SwiftUI surface folds back into the launcher while the hosting view
+    /// keeps its full layout bounds. Only after that visual transition finishes
+    /// do we atomically install the 40-point panel geometry.
+    private func beginAnimatedCollapse(_ panel: NSPanel) {
+        cancelPendingVisualCollapse()
+        notifyPresentationChanged()
+        let work = DispatchWorkItem { [weak self, weak panel] in
+            Task { @MainActor in
+                guard let self, let panel, self.hoverState.visibility == .launcher else { return }
+                self.pendingVisualCollapse = nil
+                self.applyGeometry(panel, visibility: .launcher, notify: false)
+            }
+        }
+        pendingVisualCollapse = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + presentationDuration, execute: work)
     }
 
     private func notifyPresentationChanged() {
@@ -191,8 +248,17 @@ final class WidgetWindowManager {
     }
 
     private func preferredScreen() -> NSScreen {
+        if let saved = topRightAnchor ?? positionStore.load(),
+           let screen = NSScreen.screens.first(where: { $0.frame.contains(saved) }) {
+            return screen
+        }
         let mouse = NSEvent.mouseLocation
         return NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) } ?? NSScreen.main ?? NSScreen.screens[0]
+    }
+    private func bestScreen(for frame: NSRect) -> NSScreen {
+        NSScreen.screens.max { lhs, rhs in
+            lhs.visibleFrame.intersection(frame).area < rhs.visibleFrame.intersection(frame).area
+        } ?? preferredScreen()
     }
 }
 
@@ -228,6 +294,10 @@ private final class WidgetTrackingHostingView<Content: View>: NSHostingView<Cont
     override func mouseExited(with event: NSEvent) {
         WidgetWindowManager.shared.pointerExited()
     }
+}
+
+private extension CGRect {
+    var area: CGFloat { width * height }
 }
 
 @MainActor

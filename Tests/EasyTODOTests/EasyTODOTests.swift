@@ -228,6 +228,55 @@ final class EasyTODOTests: XCTestCase {
         XCTAssertEqual(WidgetPanelGeometry.topRightFrame(size: launcher.size, visibleFrame: visible, inset: 16), launcher)
     }
 
+    func testMovedWidgetFramesKeepTheSameTopRightAnchorAcrossCycles() {
+        let anchor = CGPoint(x: 920, y: 710)
+        let launcherSize = CGSize(width: 40, height: 40)
+        let expandedSize = CGSize(width: 276, height: 350)
+
+        let expanded = WidgetPanelGeometry.frame(size: expandedSize, topRightAnchor: anchor)
+        let launcher = WidgetPanelGeometry.frame(size: launcherSize, topRightAnchor: WidgetPanelGeometry.topRightAnchor(for: expanded))
+        let expandedAgain = WidgetPanelGeometry.frame(size: expandedSize, topRightAnchor: WidgetPanelGeometry.topRightAnchor(for: launcher))
+
+        XCTAssertEqual(WidgetPanelGeometry.topRightAnchor(for: launcher), anchor)
+        XCTAssertEqual(expandedAgain, expanded)
+    }
+
+    func testWidgetAnchorClampsExpandedFrameInsideVisibleScreen() {
+        let visible = CGRect(x: 100, y: 50, width: 1000, height: 700)
+        let size = CGSize(width: 276, height: 350)
+
+        let low = WidgetPanelGeometry.clampedTopRightAnchor(CGPoint(x: -500, y: -500), expandedSize: size, visibleFrame: visible)
+        let high = WidgetPanelGeometry.clampedTopRightAnchor(CGPoint(x: 5000, y: 5000), expandedSize: size, visibleFrame: visible)
+
+        XCTAssertEqual(WidgetPanelGeometry.frame(size: size, topRightAnchor: low).minX, visible.minX)
+        XCTAssertEqual(WidgetPanelGeometry.frame(size: size, topRightAnchor: low).minY, visible.minY)
+        XCTAssertEqual(WidgetPanelGeometry.frame(size: size, topRightAnchor: high).maxX, visible.maxX)
+        XCTAssertEqual(WidgetPanelGeometry.frame(size: size, topRightAnchor: high).maxY, visible.maxY)
+    }
+
+    func testWidgetPositionStoreRoundTripsSavedAnchor() throws {
+        let suiteName = "EasyTODOTests.WidgetPositionStore.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = WidgetPositionStore(defaults: defaults)
+
+        XCTAssertNil(store.load())
+        store.save(CGPoint(x: 812.5, y: 644.25))
+        XCTAssertEqual(store.load(), CGPoint(x: 812.5, y: 644.25))
+    }
+
+    func testDragInteractionLockPreventsHoverCollapse() {
+        var state = WidgetHoverState()
+        state.show()
+        state.pointerEntered()
+        state.beginInteraction()
+        state.pointerExited()
+        state.collapseGracePeriodCompleted()
+
+        XCTAssertEqual(state.visibility, .expanded)
+        XCTAssertEqual(state.interactionLockCount, 1)
+    }
+
     func testDateOnlyDeadlineUsesEndOfLocalDay() throws {
         let calendar = Calendar(identifier: .gregorian)
         let day = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 9, day: 2, hour: 8)))
@@ -284,6 +333,21 @@ final class EasyTODOTests: XCTestCase {
         let tasks = try context.fetch(FetchDescriptor<TodoTask>())
         XCTAssertEqual(tasks.count, 1)
         XCTAssertNil(tasks[0].category)
+    }
+
+    func testWidgetStyleDeletionPersistsImmediately() throws {
+        let container = try PersistenceController.modelContainer(inMemory: true)
+        let context = container.mainContext
+        let task = TodoTask(title: "Delete from widget")
+        let survivor = TodoTask(title: "Keep")
+        context.insert(task)
+        context.insert(survivor)
+        try context.save()
+
+        context.delete(task)
+        try context.save()
+
+        XCTAssertEqual(try context.fetch(FetchDescriptor<TodoTask>()).map(\.title), ["Keep"])
     }
 
     func testCompletionTimestampIsSetAndCleared() {

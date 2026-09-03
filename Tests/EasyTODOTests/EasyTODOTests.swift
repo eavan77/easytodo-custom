@@ -231,6 +231,22 @@ final class EasyTODOTests: XCTestCase {
         XCTAssertEqual(WidgetCorner.quadrant(containing: CGPoint(x: 1000, y: 100), in: visible), .bottomRight)
     }
 
+    func testPanelDragUsesGlobalMouseDeltaWithoutChangingPanelSize() {
+        let startingFrame = CGRect(x: 16, y: 16, width: 276, height: 350)
+        let draggedFrame = WidgetPanelGeometry.draggedFrame(
+            startingFrame: startingFrame,
+            startingMouseLocation: CGPoint(x: 100, y: 100),
+            currentMouseLocation: CGPoint(x: 850, y: 650)
+        )
+
+        XCTAssertEqual(draggedFrame.origin, CGPoint(x: 766, y: 566))
+        XCTAssertEqual(draggedFrame.size, startingFrame.size)
+        XCTAssertEqual(
+            WidgetCorner.quadrant(containing: CGPoint(x: draggedFrame.midX, y: draggedFrame.midY), in: CGRect(x: 0, y: 0, width: 1440, height: 875)),
+            .topRight
+        )
+    }
+
     func testEveryCornerProducesCorrectExpandedGeometryInsideVisibleFrame() {
         let visible = CGRect(x: 100, y: 50, width: 1000, height: 700)
         let size = CGSize(width: 276, height: 350)

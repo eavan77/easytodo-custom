@@ -110,17 +110,29 @@ final class WidgetWindowManager {
         scheduleCollapseIfNeeded()
     }
 
-    func performRealPanelDrag(_ panel: NSPanel, mouseDownEvent: NSEvent) {
-        guard panel === widgetWindow, hoverState.visibility == .expanded else { return }
+    func beginRealPanelDrag(_ panel: NSPanel) -> Bool {
+        guard panel === widgetWindow, hoverState.visibility == .expanded else { return false }
         cancelPendingExpansion()
         beginChildInteraction()
-        panel.performDrag(with: mouseDownEvent)
-        finishRealPanelDrag(panel) { [weak self] in
+        return true
+    }
+
+    func updateRealPanelDrag(_ panel: NSPanel, frame: NSRect) {
+        guard panel === widgetWindow, hoverState.visibility == .expanded else { return }
+        panel.setFrameOrigin(frame.origin)
+    }
+
+    func finishRealPanelDrag(_ panel: NSPanel) {
+        guard panel === widgetWindow, hoverState.visibility == .expanded else {
+            endChildInteraction()
+            return
+        }
+        snapRealPanelAfterDrag(panel) { [weak self] in
             self?.endChildInteraction()
         }
     }
 
-    private func finishRealPanelDrag(_ panel: NSPanel, completion: (@MainActor @Sendable () -> Void)? = nil) {
+    private func snapRealPanelAfterDrag(_ panel: NSPanel, completion: (@MainActor @Sendable () -> Void)? = nil) {
         let actualFrame = panel.frame
         let center = CGPoint(x: actualFrame.midX, y: actualFrame.midY)
         let screen = screenContainingCenter(of: panel.frame)

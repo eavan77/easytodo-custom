@@ -276,9 +276,46 @@ private struct WidgetDragHandle: NSViewRepresentable {
 }
 
 private final class WidgetDragHandleNSView: NSView {
+    private var dragStartMouseLocation: NSPoint?
+    private var dragStartPanelFrame: NSRect?
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
     override func mouseDown(with event: NSEvent) {
         guard let panel = window as? NSPanel else { return }
-        WidgetWindowManager.shared.performRealPanelDrag(panel, mouseDownEvent: event)
+        guard WidgetWindowManager.shared.beginRealPanelDrag(panel) else { return }
+        dragStartMouseLocation = NSEvent.mouseLocation
+        dragStartPanelFrame = panel.frame
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard
+            let panel = window as? NSPanel,
+            let dragStartMouseLocation,
+            let dragStartPanelFrame
+        else { return }
+
+        let mouseLocation = NSEvent.mouseLocation
+        let frame = WidgetPanelGeometry.draggedFrame(
+            startingFrame: dragStartPanelFrame,
+            startingMouseLocation: dragStartMouseLocation,
+            currentMouseLocation: mouseLocation
+        )
+        WidgetWindowManager.shared.updateRealPanelDrag(panel, frame: frame)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard dragStartMouseLocation != nil, let panel = window as? NSPanel else {
+            clearDragState()
+            return
+        }
+        clearDragState()
+        WidgetWindowManager.shared.finishRealPanelDrag(panel)
+    }
+
+    private func clearDragState() {
+        dragStartMouseLocation = nil
+        dragStartPanelFrame = nil
     }
 
     override func draw(_ dirtyRect: NSRect) {

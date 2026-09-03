@@ -1,6 +1,20 @@
 import CoreGraphics
 
 enum WidgetPanelGeometry {
+    static func draggedFrame(
+        startingFrame: CGRect,
+        startingMouseLocation: CGPoint,
+        currentMouseLocation: CGPoint
+    ) -> CGRect {
+        CGRect(
+            origin: CGPoint(
+                x: startingFrame.origin.x + currentMouseLocation.x - startingMouseLocation.x,
+                y: startingFrame.origin.y + currentMouseLocation.y - startingMouseLocation.y
+            ),
+            size: startingFrame.size
+        )
+    }
+
     static func frame(
         size: CGSize,
         corner: WidgetCorner,

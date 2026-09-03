@@ -361,6 +361,46 @@ final class EasyTODOTests: XCTestCase {
         XCTAssertNil(tasks[0].category)
     }
 
+    func testCategoryCRUDAndColorChangesPersist() throws {
+        let container = try PersistenceController.modelContainer(inMemory: true)
+        let context = container.mainContext
+        let category = TaskCategory(name: "TEST", colorIdentifier: CategoryColor.purple.rawValue)
+        context.insert(category)
+        try context.save()
+
+        var fetched = try context.fetch(FetchDescriptor<TaskCategory>())
+        XCTAssertEqual(fetched.count, 1)
+        XCTAssertEqual(fetched[0].name, "TEST")
+        XCTAssertEqual(fetched[0].color, .purple)
+
+        fetched[0].name = "TEST2"
+        fetched[0].color = .green
+        try context.save()
+        fetched = try context.fetch(FetchDescriptor<TaskCategory>())
+        XCTAssertEqual(fetched[0].name, "TEST2")
+        XCTAssertEqual(fetched[0].colorIdentifier, CategoryColor.green.rawValue)
+        XCTAssertEqual(fetched[0].color, .green)
+
+        context.delete(fetched[0])
+        try context.save()
+        XCTAssertTrue(try context.fetch(FetchDescriptor<TaskCategory>()).isEmpty)
+    }
+
+    func testEveryCategoryColorIdentifierRoundTripsThroughModel() {
+        for color in CategoryColor.allCases {
+            let category = TaskCategory(name: color.title, colorIdentifier: color.rawValue)
+            XCTAssertEqual(category.colorIdentifier, color.rawValue)
+            XCTAssertEqual(category.color, color)
+            category.color = color
+            XCTAssertEqual(category.colorIdentifier, color.rawValue)
+        }
+    }
+
+    func testUnknownCategoryColorSafelyMapsToBlue() {
+        let category = TaskCategory(name: "Legacy", colorIdentifier: "unknown")
+        XCTAssertEqual(category.color, .blue)
+    }
+
     func testWidgetStyleDeletionPersistsImmediately() throws {
         let container = try PersistenceController.modelContainer(inMemory: true)
         let context = container.mainContext

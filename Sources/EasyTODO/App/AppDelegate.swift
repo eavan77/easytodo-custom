@@ -20,9 +20,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         WindowManager.shared.applyActivationPolicy()
         WindowManager.shared.prepareLauncherFirstStartup()
         WidgetWindowManager.shared.showWidget()
-        if ProcessInfo.processInfo.arguments.contains("--widget-corner-diagnostics") {
-            WidgetWindowManager.shared.runCornerDiagnostics()
-        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {

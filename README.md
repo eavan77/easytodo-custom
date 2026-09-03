@@ -186,6 +186,7 @@ Reverse chronological history, based on Git commits.
 
 | Commit | Tag | Notes |
 | --- | --- | --- |
+| `pending` | ![fix](https://img.shields.io/badge/-fix-c93c37?style=flat-square) | Rebuilt real panel drag snapping, added widget category management, unified category color controls, and removed the task-menu disclosure duplicate. |
 | `pending` | ![fix](https://img.shields.io/badge/-fix-c93c37?style=flat-square) | Enforced one packaged app instance, made widget creation idempotent, and validated native four-corner snapping against the live NSPanel. |
 | `pending` | ![feature](https://img.shields.io/badge/-feature-2da44e?style=flat-square) | Replaced free widget positioning with persisted four-corner snapping and restored the simple glass launcher with a soft pink rim. |
 | `pending` | ![feature](https://img.shields.io/badge/-feature-2da44e?style=flat-square) | Added a persisted draggable widget anchor, circular pink-rimmed launcher, fluid unfold animation, and direct widget task editing/deletion. |

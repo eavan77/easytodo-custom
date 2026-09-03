@@ -15,13 +15,8 @@ struct TaskEditorView: View {
         Form {
             TextField("Task", text: $task.title)
 
-            Picker("Category", selection: categoryBinding) {
-                Text("None").tag(UUID?.none)
-                ForEach(categories) { category in
-                    Label(category.name, systemImage: "circle.fill")
-                        .foregroundStyle(category.color.swiftUIColor)
-                        .tag(Optional(category.id))
-                }
+            LabeledContent("Category") {
+                CategorySelectionControl(categories: categories, selection: categoryBinding)
             }
 
             Toggle("Due date", isOn: $hasDueDate)

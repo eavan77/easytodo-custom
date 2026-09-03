@@ -23,11 +23,7 @@ struct CategoryManagementView: View {
 
             HStack {
                 TextField("New category", text: $newName)
-                Picker("Color", selection: $selectedColor) {
-                    ForEach(CategoryColor.allCases) { color in
-                        Text(color.title).tag(color)
-                    }
-                }
+                CategoryColorControl(selection: $selectedColor)
                 .frame(width: 110)
                 Button("Add", action: addCategory)
                     .disabled(newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -63,11 +59,9 @@ private struct CategoryManagementRow: View {
     var body: some View {
         HStack {
             Circle().fill(category.color.swiftUIColor).frame(width: 9, height: 9)
-            TextField("Category name", text: $category.name).onSubmit(onSave)
-            Picker("Color", selection: colorBinding) {
-                ForEach(CategoryColor.allCases) { Text($0.title).tag($0) }
-            }
-            .labelsHidden().frame(width: 100)
+            TextField("Category name", text: $category.name)
+                .onChange(of: category.name) { _, _ in onSave() }
+            CategoryColorControl(selection: colorBinding).frame(width: 100)
             Button(role: .destructive, action: onDelete) { Image(systemName: "trash") }
                 .buttonStyle(.borderless).accessibilityLabel("Delete category")
         }

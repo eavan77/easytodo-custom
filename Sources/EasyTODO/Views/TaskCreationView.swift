@@ -21,11 +21,8 @@ struct TaskCreationView: View {
             TextField("Task", text: $title)
                 .focused($titleFocused)
 
-            Picker("Category", selection: $categoryID) {
-                Text("None").tag(UUID?.none)
-                ForEach(categories) { category in
-                    Text(category.name).tag(Optional(category.id))
-                }
+            LabeledContent("Category") {
+                CategorySelectionControl(categories: categories, selection: $categoryID)
             }
 
             Toggle("Due date", isOn: $hasDueDate)

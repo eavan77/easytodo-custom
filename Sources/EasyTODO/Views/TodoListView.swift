@@ -75,11 +75,7 @@ struct TodoListView: View {
                 iconButton("plus", label: "Add task") { isCreatingTask = true }
             }
             HStack {
-                Picker("Category", selection: $storedFilter) {
-                    Text("All").tag("all")
-                    Text("Uncategorized").tag("uncategorized")
-                    ForEach(categories) { Text($0.name).tag($0.id.uuidString) }
-                }
+                CategoryFilterControl(categories: categories, storedFilter: $storedFilter)
                 .frame(maxWidth: 210).accessibilityLabel("Filter tasks by category")
                 Spacer()
                 Button { WidgetWindowManager.shared.showWidget() } label: {

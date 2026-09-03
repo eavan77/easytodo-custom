@@ -5,7 +5,7 @@ import SwiftUI
 
 struct WidgetRootView: View {
     @State private var visibility = WidgetWindowManager.shared.hoverState.visibility
-    @State private var corner = WidgetWindowManager.shared.corner
+    @State private var corner = WidgetWindowManager.shared.currentCorner
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -19,7 +19,6 @@ struct WidgetRootView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Open EasyTODO tasks")
                 .modifier(WidgetGlassSurface(cornerRadius: 20, compact: true))
-                .overlay { WidgetDragHandle(expandOnClick: true) }
                 .transition(.opacity.combined(with: .scale(scale: 0.72, anchor: corner.unitPoint)))
             } else {
                 WidgetTodoView()
@@ -30,7 +29,7 @@ struct WidgetRootView: View {
         .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.88), value: visibility)
         .onReceive(NotificationCenter.default.publisher(for: .easyTODOWidgetPresentationChanged)) { notification in
             if let newVisibility = notification.object as? WidgetHoverState.Visibility { visibility = newVisibility }
-            corner = WidgetWindowManager.shared.corner
+            corner = WidgetWindowManager.shared.currentCorner
         }
     }
 }
@@ -45,6 +44,7 @@ struct WidgetTodoView: View {
     @State private var newTaskTitle = ""
     @State private var editingTask: TodoTask?
     @State private var isCreatingTask = false
+    @State private var isManagingCategories = false
     @FocusState private var quickAddFocused: Bool
 
     private var filter: TaskCategoryFilter { TaskCategoryFilter(storedValue: storedFilter) }
@@ -72,26 +72,38 @@ struct WidgetTodoView: View {
                 .onAppear { WidgetWindowManager.shared.beginChildInteraction() }
                 .onDisappear { WidgetWindowManager.shared.endChildInteraction() }
         }
+        .sheet(isPresented: $isManagingCategories) {
+            CategoryManagementView()
+                .onAppear { WidgetWindowManager.shared.beginChildInteraction() }
+                .onDisappear { WidgetWindowManager.shared.endChildInteraction() }
+        }
         .onChange(of: quickAddFocused) { _, focused in
             focused ? WidgetWindowManager.shared.beginChildInteraction() : WidgetWindowManager.shared.endChildInteraction()
+        }
+        .onChange(of: categories.map(\.id)) { _, categoryIDs in
+            if case let .category(id) = filter, !categoryIDs.contains(id) {
+                storedFilter = "all"
+            }
         }
         .preferredColorScheme(preferredColorScheme)
     }
 
     private var header: some View {
         HStack(spacing: 8) {
-            WidgetDragHandle(expandOnClick: false)
+            WidgetDragHandle()
                 .frame(width: 24, height: 18)
                 .help("Drag widget")
                 .accessibilityLabel("Drag widget")
             Label("Up Next", systemImage: "checklist").font(.system(size: 14, weight: .semibold))
             Spacer()
-            Picker("Category", selection: $storedFilter) {
-                Text("All").tag("all")
-                Text("Uncategorized").tag("uncategorized")
-                ForEach(categories) { Text($0.name).tag($0.id.uuidString) }
+            CategoryFilterControl(categories: categories, storedFilter: $storedFilter)
+                .frame(maxWidth: 82)
+            Button { isManagingCategories = true } label: {
+                Image(systemName: "tag")
             }
-            .labelsHidden().frame(maxWidth: 128).accessibilityLabel("Filter by category")
+            .buttonStyle(.plain)
+            .help("Manage categories")
+            .accessibilityLabel("Manage categories")
         }
     }
 
@@ -147,6 +159,7 @@ struct WidgetTodoView: View {
                 Image(systemName: "ellipsis")
             }
             .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
             .fixedSize()
             .foregroundStyle(.secondary)
             .accessibilityLabel("Actions for \(task.title)")
@@ -255,42 +268,20 @@ private struct WidgetGlassSurface: ViewModifier {
 }
 
 private struct WidgetDragHandle: NSViewRepresentable {
-    let expandOnClick: Bool
-
     func makeNSView(context: Context) -> WidgetDragHandleNSView {
-        WidgetDragHandleNSView(expandOnClick: expandOnClick)
+        WidgetDragHandleNSView()
     }
 
-    func updateNSView(_ nsView: WidgetDragHandleNSView, context: Context) {
-        nsView.expandOnClick = expandOnClick
-    }
+    func updateNSView(_ nsView: WidgetDragHandleNSView, context: Context) {}
 }
 
 private final class WidgetDragHandleNSView: NSView {
-    var expandOnClick: Bool
-
-    init(expandOnClick: Bool) {
-        self.expandOnClick = expandOnClick
-        super.init(frame: .zero)
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-
     override func mouseDown(with event: NSEvent) {
-        guard let window else { return }
-        let start = NSEvent.mouseLocation
-        WidgetWindowManager.shared.beginWidgetDrag()
-        window.performDrag(with: event)
-        WidgetWindowManager.shared.finishWidgetDrag()
-        let end = NSEvent.mouseLocation
-        if expandOnClick, hypot(end.x - start.x, end.y - start.y) < 3 {
-            WidgetWindowManager.shared.pointerEntered()
-        }
+        guard let panel = window as? NSPanel else { return }
+        WidgetWindowManager.shared.performRealPanelDrag(panel, mouseDownEvent: event)
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        guard !expandOnClick else { return }
         let bar = NSBezierPath(roundedRect: NSRect(x: 4, y: bounds.midY - 1, width: max(8, bounds.width - 8), height: 2), xRadius: 1, yRadius: 1)
         NSColor.secondaryLabelColor.withAlphaComponent(0.42).setFill()
         bar.fill()

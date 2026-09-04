@@ -62,6 +62,7 @@ struct WidgetTodoView: View {
         .modifier(WidgetGlassSurface(cornerRadius: 20))
         .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .onTapGesture(count: 2) { WindowManager.shared.showMainWindow() }
+        .simultaneousGesture(widgetDragGesture)
         .sheet(item: $editingTask) { task in
             TaskEditorView(task: task)
                 .onAppear { WidgetWindowManager.shared.beginChildInteraction() }
@@ -90,10 +91,6 @@ struct WidgetTodoView: View {
 
     private var header: some View {
         HStack(spacing: 8) {
-            WidgetDragHandle()
-                .frame(width: 24, height: 18)
-                .help("Drag widget")
-                .accessibilityLabel("Drag widget")
             Label("Up Next", systemImage: "checklist").font(.system(size: 14, weight: .semibold))
             Spacer()
             CategoryFilterControl(categories: categories, storedFilter: $storedFilter)
@@ -212,6 +209,16 @@ struct WidgetTodoView: View {
         return nil
     }
     private var preferredColorScheme: ColorScheme? { (ThemeOption(rawValue: theme) ?? .light) == .light ? .light : .dark }
+
+    private var widgetDragGesture: some Gesture {
+        DragGesture(minimumDistance: 6, coordinateSpace: .global)
+            .onChanged { value in
+                WidgetWindowManager.shared.updateExpandedSurfaceDrag(translation: value.translation)
+            }
+            .onEnded { value in
+                WidgetWindowManager.shared.finishExpandedSurfaceDrag(translation: value.translation)
+            }
+    }
 }
 
 private struct SimpleLauncherView: View {
@@ -265,67 +272,6 @@ private struct WidgetGlassSurface: ViewModifier {
             }
         }
     }
-}
-
-private struct WidgetDragHandle: NSViewRepresentable {
-    func makeNSView(context: Context) -> WidgetDragHandleNSView {
-        WidgetDragHandleNSView()
-    }
-
-    func updateNSView(_ nsView: WidgetDragHandleNSView, context: Context) {}
-}
-
-private final class WidgetDragHandleNSView: NSView {
-    private var dragStartMouseLocation: NSPoint?
-    private var dragStartPanelFrame: NSRect?
-
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-
-    override func mouseDown(with event: NSEvent) {
-        guard let panel = window as? NSPanel else { return }
-        guard WidgetWindowManager.shared.beginRealPanelDrag(panel) else { return }
-        dragStartMouseLocation = NSEvent.mouseLocation
-        dragStartPanelFrame = panel.frame
-    }
-
-    override func mouseDragged(with event: NSEvent) {
-        guard
-            let panel = window as? NSPanel,
-            let dragStartMouseLocation,
-            let dragStartPanelFrame
-        else { return }
-
-        let mouseLocation = NSEvent.mouseLocation
-        let frame = WidgetPanelGeometry.draggedFrame(
-            startingFrame: dragStartPanelFrame,
-            startingMouseLocation: dragStartMouseLocation,
-            currentMouseLocation: mouseLocation
-        )
-        WidgetWindowManager.shared.updateRealPanelDrag(panel, frame: frame)
-    }
-
-    override func mouseUp(with event: NSEvent) {
-        guard dragStartMouseLocation != nil, let panel = window as? NSPanel else {
-            clearDragState()
-            return
-        }
-        clearDragState()
-        WidgetWindowManager.shared.finishRealPanelDrag(panel)
-    }
-
-    private func clearDragState() {
-        dragStartMouseLocation = nil
-        dragStartPanelFrame = nil
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        let bar = NSBezierPath(roundedRect: NSRect(x: 4, y: bounds.midY - 1, width: max(8, bounds.width - 8), height: 2), xRadius: 1, yRadius: 1)
-        NSColor.secondaryLabelColor.withAlphaComponent(0.42).setFill()
-        bar.fill()
-    }
-
-    override func accessibilityRole() -> NSAccessibility.Role? { .handle }
-    override func accessibilityLabel() -> String? { "Drag widget" }
 }
 
 private extension WidgetCorner {

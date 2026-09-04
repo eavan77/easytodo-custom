@@ -12,6 +12,7 @@ final class WidgetWindowManager {
     private var pendingCollapse: DispatchWorkItem?
     private var pendingVisualCollapse: DispatchWorkItem?
     private var pendingExpansion: DispatchWorkItem?
+    private var surfaceDragStartFrame: NSRect?
     private var menuObservers: [NSObjectProtocol] = []
     private var panelOwnership = WidgetPanelOwnershipState()
     private(set) var hoverState = WidgetHoverState()
@@ -108,6 +109,33 @@ final class WidgetWindowManager {
     func endChildInteraction() {
         hoverState.endInteraction()
         scheduleCollapseIfNeeded()
+    }
+
+    func updateExpandedSurfaceDrag(translation: CGSize) {
+        guard let panel = widgetWindow, hoverState.visibility == .expanded else { return }
+        if surfaceDragStartFrame == nil {
+            guard beginRealPanelDrag(panel) else { return }
+            surfaceDragStartFrame = panel.frame
+        }
+        guard let surfaceDragStartFrame else { return }
+        let draggedFrame = WidgetPanelGeometry.draggedFrame(
+            startingFrame: surfaceDragStartFrame,
+            startingMouseLocation: .zero,
+            currentMouseLocation: CGPoint(x: translation.width, y: -translation.height)
+        )
+        updateRealPanelDrag(panel, frame: draggedFrame)
+    }
+
+    func finishExpandedSurfaceDrag(translation: CGSize) {
+        guard let panel = widgetWindow, let surfaceDragStartFrame else { return }
+        let draggedFrame = WidgetPanelGeometry.draggedFrame(
+            startingFrame: surfaceDragStartFrame,
+            startingMouseLocation: .zero,
+            currentMouseLocation: CGPoint(x: translation.width, y: -translation.height)
+        )
+        updateRealPanelDrag(panel, frame: draggedFrame)
+        self.surfaceDragStartFrame = nil
+        finishRealPanelDrag(panel)
     }
 
     func beginRealPanelDrag(_ panel: NSPanel) -> Bool {

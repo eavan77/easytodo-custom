@@ -62,7 +62,6 @@ struct WidgetTodoView: View {
         .modifier(WidgetGlassSurface(cornerRadius: 20))
         .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .onTapGesture(count: 2) { WindowManager.shared.showMainWindow() }
-        .simultaneousGesture(widgetDragGesture)
         .sheet(item: $editingTask) { task in
             TaskEditorView(task: task)
                 .onAppear { WidgetWindowManager.shared.beginChildInteraction() }
@@ -210,15 +209,6 @@ struct WidgetTodoView: View {
     }
     private var preferredColorScheme: ColorScheme? { (ThemeOption(rawValue: theme) ?? .light) == .light ? .light : .dark }
 
-    private var widgetDragGesture: some Gesture {
-        DragGesture(minimumDistance: 6, coordinateSpace: .global)
-            .onChanged { value in
-                WidgetWindowManager.shared.updateExpandedSurfaceDrag(translation: value.translation)
-            }
-            .onEnded { value in
-                WidgetWindowManager.shared.finishExpandedSurfaceDrag(translation: value.translation)
-            }
-    }
 }
 
 private struct SimpleLauncherView: View {

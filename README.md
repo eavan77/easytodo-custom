@@ -186,6 +186,7 @@ Reverse chronological history, based on Git commits.
 
 | Commit | Tag | Notes |
 | --- | --- | --- |
+| `pending` | ![fix](https://img.shields.io/badge/-fix-c93c37?style=flat-square) | Removed moving-window coordinate feedback from full-surface dragging by tracking absolute AppKit mouse positions. |
 | `pending` | ![ui](https://img.shields.io/badge/-ui-bc4c00?style=flat-square) | Made the entire expanded widget surface draggable and removed the dedicated corner drag handle without changing corner snapping. |
 | `pending` | ![fix](https://img.shields.io/badge/-fix-c93c37?style=flat-square) | Fixed four-corner snapping by waiting for the drag handle's real mouse-up event before reading and persisting the panel position. |
 | `pending` | ![fix](https://img.shields.io/badge/-fix-c93c37?style=flat-square) | Rebuilt real panel drag snapping, added widget category management, unified category color controls, and removed the task-menu disclosure duplicate. |

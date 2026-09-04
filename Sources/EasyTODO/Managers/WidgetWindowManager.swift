@@ -12,7 +12,6 @@ final class WidgetWindowManager {
     private var pendingCollapse: DispatchWorkItem?
     private var pendingVisualCollapse: DispatchWorkItem?
     private var pendingExpansion: DispatchWorkItem?
-    private var surfaceDragStartFrame: NSRect?
     private var menuObservers: [NSObjectProtocol] = []
     private var panelOwnership = WidgetPanelOwnershipState()
     private(set) var hoverState = WidgetHoverState()
@@ -109,33 +108,6 @@ final class WidgetWindowManager {
     func endChildInteraction() {
         hoverState.endInteraction()
         scheduleCollapseIfNeeded()
-    }
-
-    func updateExpandedSurfaceDrag(translation: CGSize) {
-        guard let panel = widgetWindow, hoverState.visibility == .expanded else { return }
-        if surfaceDragStartFrame == nil {
-            guard beginRealPanelDrag(panel) else { return }
-            surfaceDragStartFrame = panel.frame
-        }
-        guard let surfaceDragStartFrame else { return }
-        let draggedFrame = WidgetPanelGeometry.draggedFrame(
-            startingFrame: surfaceDragStartFrame,
-            startingMouseLocation: .zero,
-            currentMouseLocation: CGPoint(x: translation.width, y: -translation.height)
-        )
-        updateRealPanelDrag(panel, frame: draggedFrame)
-    }
-
-    func finishExpandedSurfaceDrag(translation: CGSize) {
-        guard let panel = widgetWindow, let surfaceDragStartFrame else { return }
-        let draggedFrame = WidgetPanelGeometry.draggedFrame(
-            startingFrame: surfaceDragStartFrame,
-            startingMouseLocation: .zero,
-            currentMouseLocation: CGPoint(x: translation.width, y: -translation.height)
-        )
-        updateRealPanelDrag(panel, frame: draggedFrame)
-        self.surfaceDragStartFrame = nil
-        finishRealPanelDrag(panel)
     }
 
     func beginRealPanelDrag(_ panel: NSPanel) -> Bool {
@@ -357,16 +329,80 @@ final class WidgetWindowManager {
 }
 
 private final class WidgetPanel: NSPanel {
+    private var dragStartMouseLocation: NSPoint?
+    private var dragStartFrame: NSRect?
+    private var isSurfaceDragging = false
+    private let dragThreshold: CGFloat = 6
+
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
 
     override func sendEvent(_ event: NSEvent) {
-        if event.type == .leftMouseDown { WidgetWindowManager.shared.activateForInteraction() }
-        if event.type == .rightMouseDown {
+        switch event.type {
+        case .leftMouseDown:
+            WidgetWindowManager.shared.activateForInteraction()
+            dragStartMouseLocation = NSEvent.mouseLocation
+            dragStartFrame = frame
+            isSurfaceDragging = false
+        case .leftMouseDragged:
+            if handleSurfaceDrag() { return }
+        case .leftMouseUp:
+            if finishSurfaceDrag() { return }
+            clearSurfaceDrag()
+        case .rightMouseDown:
             WidgetWindowManager.shared.showContextMenu(for: event, in: self)
             return
+        default:
+            break
         }
         super.sendEvent(event)
+    }
+
+    private func handleSurfaceDrag() -> Bool {
+        guard let dragStartMouseLocation, let dragStartFrame else { return false }
+        let mouseLocation = NSEvent.mouseLocation
+        let distance = hypot(
+            mouseLocation.x - dragStartMouseLocation.x,
+            mouseLocation.y - dragStartMouseLocation.y
+        )
+        if !isSurfaceDragging {
+            guard distance >= dragThreshold else { return false }
+            guard WidgetWindowManager.shared.beginRealPanelDrag(self) else {
+                clearSurfaceDrag()
+                return false
+            }
+            isSurfaceDragging = true
+        }
+        WidgetWindowManager.shared.updateRealPanelDrag(
+            self,
+            frame: WidgetPanelGeometry.draggedFrame(
+                startingFrame: dragStartFrame,
+                startingMouseLocation: dragStartMouseLocation,
+                currentMouseLocation: mouseLocation
+            )
+        )
+        return true
+    }
+
+    private func finishSurfaceDrag() -> Bool {
+        guard isSurfaceDragging, let dragStartMouseLocation, let dragStartFrame else { return false }
+        WidgetWindowManager.shared.updateRealPanelDrag(
+            self,
+            frame: WidgetPanelGeometry.draggedFrame(
+                startingFrame: dragStartFrame,
+                startingMouseLocation: dragStartMouseLocation,
+                currentMouseLocation: NSEvent.mouseLocation
+            )
+        )
+        clearSurfaceDrag()
+        WidgetWindowManager.shared.finishRealPanelDrag(self)
+        return true
+    }
+
+    private func clearSurfaceDrag() {
+        dragStartMouseLocation = nil
+        dragStartFrame = nil
+        isSurfaceDragging = false
     }
 }
 

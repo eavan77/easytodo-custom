@@ -4,6 +4,7 @@ import SwiftUI
 
 struct TaskRow: View {
     @Bindable var task: TodoTask
+    var showPlanMetadata = false
     var onUpdate: () -> Void
     var onCompletionChanged: (_ task: TodoTask, _ oldValue: Bool, _ newValue: Bool) -> Void
     var onMoveToDate: ((_ task: TodoTask, _ date: Date) -> Void)? = nil
@@ -98,14 +99,31 @@ struct TaskRow: View {
                 )
                 .frame(maxWidth: .infinity, minHeight: 22)
             }
-            if let deadline = DeadlineFormatting.text(for: task) {
-                Text(deadline)
+            if let metadata = rowMetadata {
+                Text(metadata)
                     .font(.caption)
                     .foregroundStyle(isOverdue ? Color.orange : Color.secondary)
             }
         }
         .foregroundStyle(.primary)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var rowMetadata: String? {
+        guard showPlanMetadata else { return DeadlineFormatting.text(for: task) }
+        let start = task.plannedStart.map { "Start \(shortDate($0))" }
+        let due = task.scheduledDate.map { "Due \(shortDate($0))" }
+        let plan = [start, due].compactMap { $0 }.joined(separator: " · ")
+        let priority = task.priority == .normal ? nil : task.priority.title
+        let detail = task.needsPlannerMetadata ? "Estimate needed" :
+            [priority, task.taskSize.rawValue, task.workMode.title].compactMap { $0 }.joined(separator: " · ")
+        return [plan.isEmpty ? nil : plan, detail].compactMap { $0 }.joined(separator: "  ")
+    }
+
+    private func shortDate(_ date: Date) -> String {
+        if calendar.isDateInToday(date) { return "today" }
+        if calendar.isDateInTomorrow(date) { return "tomorrow" }
+        return date.formatted(.dateTime.month(.abbreviated).day())
     }
 
     private func beginTitleEdit() {

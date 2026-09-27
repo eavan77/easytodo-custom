@@ -52,10 +52,12 @@ enum TaskRepeatScheduler {
                 scheduledDate: date,
                 hasExplicitDueTime: task.hasExplicitDueTime,
                 category: task.category,
-                priority: task.priority,
+                colorPriority: task.colorPriority,
                 repeatRule: repeatRule,
                 recurrenceGroupID: groupID
             )
+            occurrence.planningPriorityRawValue = task.planningPriorityRawValue
+            occurrence.prioritySourceRawValue = task.prioritySourceRawValue
             context.insert(occurrence)
         }
 

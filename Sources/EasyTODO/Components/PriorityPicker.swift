@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct PriorityPicker: View {
-    @Binding var priority: TaskPriority
+    @Binding var priority: TaskColorPriority
     @State private var isShowingPalette = false
 
     var body: some View {
@@ -22,7 +22,7 @@ struct PriorityPicker: View {
         .fixedSize()
         .popover(isPresented: $isShowingPalette, arrowEdge: .bottom) {
             HStack(spacing: 8) {
-                ForEach(TaskPriority.allCases) { option in
+                ForEach(TaskColorPriority.allCases) { option in
                     Button {
                         priority = option
                         isShowingPalette = false

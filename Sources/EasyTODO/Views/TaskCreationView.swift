@@ -14,6 +14,7 @@ struct TaskCreationView: View {
     @State private var hasDueDate = false
     @State private var hasDueTime = false
     @State private var dueDate = Date()
+    @State private var deadlineType: DeadlineType = .hard
     @FocusState private var titleFocused: Bool
 
     var body: some View {
@@ -32,6 +33,11 @@ struct TaskCreationView: View {
                 if hasDueTime {
                     DatePicker("Time", selection: $dueDate, displayedComponents: .hourAndMinute)
                 }
+                Picker("Deadline type", selection: $deadlineType) {
+                    Text("Official").tag(DeadlineType.hard)
+                    Text("My deadline").tag(DeadlineType.internalDeadline)
+                }
+                .pickerStyle(.segmented)
             }
 
             HStack {
@@ -57,6 +63,14 @@ struct TaskCreationView: View {
             guard let task = try TaskCreation.addTask(title: title, scheduledDate: nil, in: modelContext) else { return }
             task.category = categories.first { $0.id == categoryID }
             task.setDueDate(selectedDueDate, includesTime: hasDueDate && hasDueTime)
+            if hasDueDate {
+                if let match = FixedAssessmentRecognizer.match(in: task.title), deadlineType == .hard {
+                    task.setDeadlineType(.hard, source: .autoDetected)
+                    task.plannerReason = "Fixed assessment detected from “\(match.phrase)”."
+                } else {
+                    task.setDeadlineType(deadlineType, source: .userSelected)
+                }
+            }
             try modelContext.save()
             onCreated?(task)
             dismiss()

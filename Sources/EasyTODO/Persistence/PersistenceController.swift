@@ -4,7 +4,12 @@ import SwiftData
 enum PersistenceController {
     static let schema = Schema([
         TodoTask.self,
-        TaskCategory.self
+        TaskCategory.self,
+        WorkBlock.self,
+        TaskBlockDefinition.self,
+        DayCapacityTemplate.self,
+        DayCapacityOverride.self,
+        ScheduleConflictAcknowledgement.self
     ])
 
     @MainActor

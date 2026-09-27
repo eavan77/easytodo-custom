@@ -3,8 +3,8 @@ set -euo pipefail
 
 APP_NAME="EasyTODO"
 BUNDLE_ID="${BUNDLE_ID:-com.easytodo.EasyTODO}"
-VERSION="${VERSION:-1.0.0}"
-BUILD_NUMBER="${BUILD_NUMBER:-1}"
+VERSION="${VERSION:-1.1.0}"
+BUILD_NUMBER="${BUILD_NUMBER:-10}"
 CONFIGURATION="${CONFIGURATION:-release}"
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -23,6 +23,12 @@ ICON_FILE="$RESOURCES_DIR/$APP_NAME.icns"
 ZIP_PATH="$DIST_DIR/$APP_NAME-macOS.zip"
 
 cd "$PROJECT_ROOT"
+
+GIT_HASH="$(git rev-parse --short HEAD 2>/dev/null || printf 'unavailable')"
+if ! git diff --quiet --ignore-submodules -- 2>/dev/null; then
+    GIT_HASH="${GIT_HASH}+dirty"
+fi
+BUILD_DATE="$(date '+%b %e, %Y %H:%M %Z')"
 
 export CLANG_MODULE_CACHE_PATH="${CLANG_MODULE_CACHE_PATH:-$PROJECT_ROOT/.build/clang-module-cache}"
 mkdir -p "$CLANG_MODULE_CACHE_PATH"
@@ -92,6 +98,10 @@ cat > "$INFO_PLIST" <<PLIST
     <string>$VERSION</string>
     <key>CFBundleVersion</key>
     <string>$BUILD_NUMBER</string>
+    <key>EasyTODOGitHash</key>
+    <string>$GIT_HASH</string>
+    <key>EasyTODOBuildDate</key>
+    <string>$BUILD_DATE</string>
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.productivity</string>
     <key>LSMinimumSystemVersion</key>
@@ -136,9 +146,20 @@ COPYFILE_DISABLE=1 ditto --norsrc "$APP_BUNDLE" "$FINAL_APP_BUNDLE"
 
 if command -v codesign >/dev/null 2>&1; then
     # FileProvider-backed folders can reattach Finder metadata while archiving.
-    # Clean the generated bundle once more and verify the final on-disk result.
-    /usr/bin/xattr -cr "$FINAL_APP_BUNDLE"
-    codesign --verify --deep --strict --verbose=2 "$FINAL_APP_BUNDLE"
+    # Clean and verify with a short retry because the metadata can race the copy.
+    VERIFIED=false
+    for _ in {1..5}; do
+        /usr/bin/xattr -cr "$FINAL_APP_BUNDLE"
+        if codesign --verify --deep --strict --verbose=2 "$FINAL_APP_BUNDLE"; then
+            VERIFIED=true
+            break
+        fi
+        sleep 0.1
+    done
+    if [[ "$VERIFIED" != true ]]; then
+        echo "Unable to produce a clean signed app bundle: $FINAL_APP_BUNDLE" >&2
+        exit 1
+    fi
 fi
 
 echo "Packaged app: $FINAL_APP_BUNDLE"

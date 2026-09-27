@@ -36,6 +36,9 @@ struct EasyTODOApp: App {
         }
         .windowStyle(.hiddenTitleBar)
         .commands {
+            CommandGroup(replacing: .appInfo) {
+                Button("About EasyTODO") { AboutWindowManager.shared.show() }
+            }
             CommandGroup(after: .undoRedo) {
                 Button("Undo Delete") {
                     NotificationCenter.default.post(name: .easyTODOUndoDeleteTask, object: nil)

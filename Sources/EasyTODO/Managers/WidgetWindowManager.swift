@@ -14,11 +14,12 @@ final class WidgetWindowManager {
     private var pendingExpansion: DispatchWorkItem?
     private var menuObservers: [NSObjectProtocol] = []
     private var panelOwnership = WidgetPanelOwnershipState()
+    private var interactionRegistry = WidgetInteractionRegistry()
     private(set) var hoverState = WidgetHoverState()
     private(set) var currentCorner: WidgetCorner
     private let cornerStore: WidgetCornerStore
 
-    private let expandedSize = NSSize(width: 276, height: 350)
+    private let expandedSize = NSSize(width: 420, height: 560)
     private let launcherSize = NSSize(width: 40, height: 40)
     private let edgeInset: CGFloat = 16
     private let collapseDelay = 0.45
@@ -33,10 +34,10 @@ final class WidgetWindowManager {
         let center = NotificationCenter.default
         menuObservers = [
             center.addObserver(forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main) { _ in
-                Task { @MainActor in WidgetWindowManager.shared.beginChildInteraction() }
+                Task { @MainActor in WidgetWindowManager.shared.beginChildInteraction(.menu) }
             },
             center.addObserver(forName: NSMenu.didEndTrackingNotification, object: nil, queue: .main) { _ in
-                Task { @MainActor in WidgetWindowManager.shared.endChildInteraction() }
+                Task { @MainActor in WidgetWindowManager.shared.endChildInteraction(.menu) }
             }
         ]
     }
@@ -65,6 +66,7 @@ final class WidgetWindowManager {
         cancelPendingCollapse()
         cancelPendingVisualCollapse()
         cancelPendingExpansion()
+        interactionRegistry.reset()
         hoverState.show()
         applyGeometry(panel, visibility: .launcher, notify: true)
         panel.alphaValue = 1
@@ -79,6 +81,7 @@ final class WidgetWindowManager {
         cancelPendingCollapse()
         cancelPendingVisualCollapse()
         cancelPendingExpansion()
+        interactionRegistry.reset()
         hoverState.hide()
         notifyPresentationChanged()
         widgetWindow?.orderOut(nil)
@@ -100,20 +103,21 @@ final class WidgetWindowManager {
         scheduleCollapseIfNeeded()
     }
 
-    func beginChildInteraction() {
+    func beginChildInteraction(_ kind: WidgetInteractionKind) {
         cancelPendingCollapse()
-        hoverState.beginInteraction()
+        if interactionRegistry.begin(kind) { hoverState.beginInteraction() }
     }
 
-    func endChildInteraction() {
-        hoverState.endInteraction()
+    func endChildInteraction(_ kind: WidgetInteractionKind) {
+        if interactionRegistry.end(kind) { hoverState.endInteraction() }
+        synchronizePointerLocation()
         scheduleCollapseIfNeeded()
     }
 
     func beginRealPanelDrag(_ panel: NSPanel) -> Bool {
         guard panel === widgetWindow, hoverState.visibility == .expanded else { return false }
         cancelPendingExpansion()
-        beginChildInteraction()
+        beginChildInteraction(.panelDrag)
         return true
     }
 
@@ -124,11 +128,11 @@ final class WidgetWindowManager {
 
     func finishRealPanelDrag(_ panel: NSPanel) {
         guard panel === widgetWindow, hoverState.visibility == .expanded else {
-            endChildInteraction()
+            endChildInteraction(.panelDrag)
             return
         }
         snapRealPanelAfterDrag(panel) { [weak self] in
-            self?.endChildInteraction()
+            self?.endChildInteraction(.panelDrag)
         }
     }
 
@@ -166,8 +170,8 @@ final class WidgetWindowManager {
     }
 
     func showContextMenu(for event: NSEvent, in panel: NSPanel) {
-        beginChildInteraction()
-        defer { endChildInteraction() }
+        beginChildInteraction(.contextMenu)
+        defer { endChildInteraction(.contextMenu) }
 
         let controller = WidgetContextMenuController()
         let menu = NSMenu()
@@ -257,6 +261,11 @@ final class WidgetWindowManager {
         pendingExpansion?.cancel()
         pendingExpansion = nil
     }
+    private func synchronizePointerLocation() {
+        guard hoverState.visibility == .expanded, let panel = widgetWindow else { return }
+        let pointerIsInside = NSMouseInRect(NSEvent.mouseLocation, panel.frame, false)
+        hoverState.synchronizePointer(isInside: pointerIsInside)
+    }
 
     private func launcherFrame(on screen: NSScreen) -> NSRect {
         WidgetPanelGeometry.frame(size: launcherSize, corner: currentCorner, visibleFrame: screen.visibleFrame, inset: edgeInset)
@@ -287,6 +296,8 @@ final class WidgetWindowManager {
     private func expand(_ panel: NSPanel) {
         cancelPendingVisualCollapse()
         applyGeometry(panel, visibility: .expanded, notify: true)
+        synchronizePointerLocation()
+        scheduleCollapseIfNeeded()
     }
 
     /// The SwiftUI surface folds back into the launcher while the hosting view

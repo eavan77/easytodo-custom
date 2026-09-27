@@ -131,6 +131,22 @@ swift run EasyTODO
 | `Return` | Save active quick input |
 | `Esc` | Dismiss active quick input |
 
+## EasyTODO Task Format v1 and v2
+
+Paste one or more `[TASK]` blocks through **Add Task → Paste Tasks**. The optional priority field is placed after `deadline`:
+
+```text
+priority: critical | high | normal | low | auto
+```
+
+- `critical` protects compatible planning capacity before lower-priority work.
+- `high` follows Critical work but precedes ordinary work.
+- `normal` is the default ordinary priority.
+- `low` may be deferred when capacity is tight.
+- `auto` lets fixed-assessment recognition choose Critical, otherwise Normal. Omitting the field has the same behavior for compatibility with older Task Format v1 text.
+
+Task Format v2 adds `start_by` and nested logical blocks. A task can contain one or more `[BLOCK]` sections with `name`, `minutes`, `splittable`, and `min_session_minutes`. EasyTODO schedules each block as one session when possible and only splits it into same-mode sessions when capacity requires it. Format v1 remains supported and is converted into generic logical blocks during import.
+
 ## Settings
 
 | Setting | Options |
@@ -186,6 +202,17 @@ Reverse chronological history, based on Git commits.
 
 | Commit | Tag | Notes |
 | --- | --- | --- |
+| `pending` | ![fix](https://img.shields.io/badge/-fix-c93c37?style=flat-square) | Let Critical official Deep work use bounded daytime reserve capacity on free days and turn missed manual Start By dates into immediate catch-up scheduling instead of permanent conflicts. |
+| `pending` | ![ui](https://img.shields.io/badge/-ui-bc4c00?style=flat-square) | Simplified Focus and Week into day-level task lists, cleaned the shared widget input bar, fixed quick-add focus preventing widget collapse, and moved explicit deep blocks forward onto better free-day capacity while preserving planner internals. |
+| `pending` | ![fix](https://img.shields.io/badge/-fix-c93c37?style=flat-square) | Hid zero-shortfall conflict banners and made floating-widget interaction locks idempotent so repeated sheet appearances cannot prevent automatic collapse. |
+| `pending` | ![feature](https://img.shields.io/badge/-feature-2da44e?style=flat-square) | Separated tasks, user-defined logical blocks, and planner-generated sessions; added enforceable manual Start By overrides, block editing, ordered duration-aware scheduling, and Task Format v2 while preserving v1 imports. |
+| `pending` | ![feature](https://img.shields.io/badge/-feature-2da44e?style=flat-square) | Added explicit scheduling priority with assessment-aware defaults, manual override, tiered capacity reservation, priority-aware conflict suggestions, and Task Format v1 import support. |
+| `pending` | ![feature](https://img.shields.io/badge/-feature-2da44e?style=flat-square) | Added explicit legacy estimate confirmation, unambiguous deadline classification, and deterministic EasyTODO Task Format v1 batch import with preview validation and replanning. |
+| `pending` | ![fix](https://img.shields.io/badge/-fix-c93c37?style=flat-square) | Kept Split Block sessions in their original cognitive work mode, added duration-aware same-mode capacity, preserved total minutes, and linked locked split sessions. |
+| `pending` | ![feature](https://img.shields.io/badge/-feature-2da44e?style=flat-square) | Prioritized conflict resolution into a top-three flow with expandable alternatives, Focus alerts, acknowledged unresolved state, fixed-assessment recognition, split sessions, and protected-time emergency overrides. |
+| `pending` | ![feature](https://img.shields.io/badge/-feature-2da44e?style=flat-square) | Added explicit official/self-set deadline classification, preview-first overload resolution with one-day capacity overrides and full undo, and a canonical install workflow with visible build identity. |
+| `pending` | ![fix](https://img.shields.io/badge/-fix-c93c37?style=flat-square) | Distinguished legacy fallback estimates, kept hard-deadline days eligible after the preferred safety buffer, added capacity-aware overload reporting, and numbered planned work blocks by their real schedule order. |
+| `pending` | ![feature](https://img.shields.io/badge/-feature-2da44e?style=flat-square) | Added the Phase 1 workload planner to the primary floating widget with additive task metadata, work blocks, weekly capacity, Focus and Week views, plan sorting, locking, undo, overload detection, and legacy-ID crash protection. |
 | `pending` | ![fix](https://img.shields.io/badge/-fix-c93c37?style=flat-square) | Removed moving-window coordinate feedback from full-surface dragging by tracking absolute AppKit mouse positions. |
 | `pending` | ![ui](https://img.shields.io/badge/-ui-bc4c00?style=flat-square) | Made the entire expanded widget surface draggable and removed the dedicated corner drag handle without changing corner snapping. |
 | `pending` | ![fix](https://img.shields.io/badge/-fix-c93c37?style=flat-square) | Fixed four-corner snapping by waiting for the drag handle's real mouse-up event before reading and persisting the panel position. |

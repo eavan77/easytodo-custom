@@ -36,6 +36,11 @@ struct WidgetHoverState: Equatable {
         isCollapsePending = visibility == .expanded && interactionLockCount == 0
     }
 
+    mutating func synchronizePointer(isInside: Bool) {
+        if isInside { pointerEntered() }
+        else { pointerExited() }
+    }
+
     mutating func beginInteraction() {
         interactionLockCount += 1
         isCollapsePending = false
@@ -50,5 +55,35 @@ struct WidgetHoverState: Equatable {
         guard isCollapsePending, !isPointerInside, interactionLockCount == 0 else { return }
         visibility = .launcher
         isCollapsePending = false
+    }
+}
+
+enum WidgetInteractionKind: Hashable {
+    case menu
+    case contextMenu
+    case taskEditor
+    case taskCreation
+    case taskImport
+    case categoryManagement
+    case planUpdate
+    case quickAdd
+    case panelDrag
+}
+
+struct WidgetInteractionRegistry: Equatable {
+    private(set) var active = Set<WidgetInteractionKind>()
+
+    var count: Int { active.count }
+
+    mutating func begin(_ kind: WidgetInteractionKind) -> Bool {
+        active.insert(kind).inserted
+    }
+
+    mutating func end(_ kind: WidgetInteractionKind) -> Bool {
+        active.remove(kind) != nil
+    }
+
+    mutating func reset() {
+        active.removeAll()
     }
 }

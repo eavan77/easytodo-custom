@@ -23,6 +23,10 @@ enum TaskCreation {
         context.insert(task)
         try context.save()
 
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .easyTODOPlanningInputsChanged, object: task.id)
+        }
+
         return task
     }
 }

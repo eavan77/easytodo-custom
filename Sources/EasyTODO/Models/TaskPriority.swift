@@ -1,6 +1,6 @@
 import SwiftUI
 
-enum TaskPriority: String, CaseIterable, Identifiable {
+enum TaskColorPriority: String, CaseIterable, Identifiable {
     case importantUrgent
     case urgentNotImportant
     case notUrgentImportant
@@ -34,10 +34,10 @@ enum TaskPriority: String, CaseIterable, Identifiable {
         }
     }
 
-    static func normalized(from rawValue: String?) -> TaskPriority {
+    static func normalized(from rawValue: String?) -> TaskColorPriority {
         guard let rawValue else { return .notUrgentImportant }
 
-        if let priority = TaskPriority(rawValue: rawValue) {
+        if let priority = TaskColorPriority(rawValue: rawValue) {
             return priority
         }
 
@@ -52,6 +52,39 @@ enum TaskPriority: String, CaseIterable, Identifiable {
             return .notUrgentNotImportant
         default:
             return .notUrgentImportant
+        }
+    }
+}
+
+enum TaskPriority: String, CaseIterable, Identifiable, Codable {
+    case critical
+    case high
+    case normal
+    case low
+
+    var id: String { rawValue }
+    var title: String { rawValue.capitalized }
+
+    var schedulingTier: Int {
+        switch self {
+        case .critical: 0
+        case .high: 1
+        case .normal: 2
+        case .low: 3
+        }
+    }
+}
+
+enum PrioritySource: String, CaseIterable, Codable {
+    case userSelected
+    case autoDetected
+    case `default`
+
+    var title: String {
+        switch self {
+        case .userSelected: "User selected"
+        case .autoDetected: "Auto-detected"
+        case .default: "Default"
         }
     }
 }

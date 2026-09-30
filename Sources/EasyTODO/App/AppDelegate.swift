@@ -20,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         WindowManager.shared.applyActivationPolicy()
         WindowManager.shared.prepareLauncherFirstStartup()
         WidgetWindowManager.shared.showWidget()
+	NotchWindowManager.shared.show()
     }
 
     func applicationWillTerminate(_ notification: Notification) {

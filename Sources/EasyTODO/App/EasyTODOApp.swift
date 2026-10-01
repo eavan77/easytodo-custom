@@ -17,6 +17,7 @@ struct EasyTODOApp: App {
             MenuBarManager.shared.configure(modelContainer: modelContainer)
             QuickAddPanelManager.shared.configure(modelContainer: modelContainer)
             WidgetWindowManager.shared.configure(modelContainer: modelContainer)
+            NotchWindowManager.shared.configure(modelContainer: modelContainer)
         } catch {
             fatalError("Unable to create SwiftData container: \(error)")
         }

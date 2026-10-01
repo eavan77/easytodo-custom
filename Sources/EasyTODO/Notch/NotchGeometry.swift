@@ -34,6 +34,10 @@ struct NotchGeometry {
         self.screen = screen
     }
 
+    var hoverTriggerFrame: NSRect {
+        collapsedFrame.insetBy(dx: -12, dy: -8)
+    }
+
     var expandedFrame: NSRect {
         NSRect(
             x: collapsedFrame.midX - expandedWidth / 2,

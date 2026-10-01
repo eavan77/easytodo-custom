@@ -1,11 +1,21 @@
 import AppKit
 import QuartzCore
+import SwiftData
 
 @MainActor
 final class NotchWindowManager {
     static let shared = NotchWindowManager()
 
     private var panel: NSPanel?
+    private var contentView: NotchTrackingView?
+    private var modelContainer: ModelContainer?
+
+    func configure(modelContainer: ModelContainer) {
+        self.modelContainer = modelContainer
+    }
+    private let pointerMonitor = NotchPointerMonitor()
+
+    private var isExpanded = false
     private var pendingExpansion: DispatchWorkItem?
     private var pendingCollapse: DispatchWorkItem?
 
@@ -23,7 +33,6 @@ final class NotchWindowManager {
         }
 
         if let panel {
-            panel.setFrame(geometry.collapsedFrame, display: true)
             panel.orderFrontRegardless()
             return
         }
@@ -63,94 +72,174 @@ final class NotchWindowManager {
         ]
         contentView.layer?.masksToBounds = true
 
-        contentView.onMouseEntered = { [weak self, weak panel, weak contentView] in
-            guard let self, let panel, let contentView else { return }
-
-            self.pendingCollapse?.cancel()
-            self.pendingCollapse = nil
-            self.pendingExpansion?.cancel()
-
-            let work = DispatchWorkItem { [weak self, weak panel, weak contentView] in
-                guard let self, let panel, let contentView else { return }
-
-                self.animateExpansion(
-                    panel: panel,
-                    contentView: contentView,
-                    to: geometry.expandedFrame,
-                    cornerRadius: 18
-                )
-
-                self.pendingExpansion = nil
-            }
-
-            self.pendingExpansion = work
-
-            DispatchQueue.main.asyncAfter(
-                deadline: .now() + self.expansionDelay,
-                execute: work
-            )
+        guard let modelContainer else {
+            NSLog("[Notch] ModelContainer was not configured.")
+            return
         }
 
-        contentView.onMouseExited = { [weak self, weak panel, weak contentView] in
-            guard let self, let panel, let contentView else { return }
+        contentView.installHub(modelContainer: modelContainer)
+        contentView.setHubVisible(false)
 
-            self.pendingExpansion?.cancel()
-            self.pendingExpansion = nil
-            self.pendingCollapse?.cancel()
-
-            let work = DispatchWorkItem { [weak self, weak panel, weak contentView] in
-                guard let self, let panel, let contentView else { return }
-
-                self.animateCollapse(
-                    panel: panel,
-                    contentView: contentView,
-                    to: geometry.collapsedFrame,
-                    cornerRadius: 10
-                )
-
-                self.pendingCollapse = nil
-            }
-
-            self.pendingCollapse = work
-
-            DispatchQueue.main.asyncAfter(
-                deadline: .now() + self.collapseDelay,
-                execute: work
-            )
-        }
+        // NSTrackingArea no longer controls presentation.
+        contentView.onMouseEntered = nil
+        contentView.onMouseExited = nil
 
         panel.contentView = contentView
+
         self.panel = panel
+        self.contentView = contentView
+
+        pointerMonitor.onPointerMoved = { [weak self] location in
+            self?.handlePointer(
+                location,
+                geometry: geometry
+            )
+        }
+
+        pointerMonitor.start()
         panel.orderFrontRegardless()
+    }
+
+    private func handlePointer(
+        _ location: NSPoint,
+        geometry: NotchGeometry
+    ) {
+        guard let panel, let contentView else { return }
+
+        if isExpanded {
+            if panel.frame.contains(location) {
+                cancelCollapse()
+            } else {
+                scheduleCollapse(
+                    panel: panel,
+                    contentView: contentView,
+                    geometry: geometry
+                )
+            }
+        } else {
+            if geometry.hoverTriggerFrame.contains(location) {
+                scheduleExpansion(
+                    panel: panel,
+                    contentView: contentView,
+                    geometry: geometry
+                )
+            } else {
+                cancelExpansion()
+            }
+        }
+    }
+
+    private func scheduleExpansion(
+        panel: NSPanel,
+        contentView: NotchTrackingView,
+        geometry: NotchGeometry
+    ) {
+        guard pendingExpansion == nil else { return }
+
+        cancelCollapse()
+
+        let work = DispatchWorkItem { [weak self, weak panel, weak contentView] in
+            guard let self, let panel, let contentView else { return }
+
+            self.pendingExpansion = nil
+
+            let pointer = NSEvent.mouseLocation
+            guard geometry.hoverTriggerFrame.contains(pointer) else { return }
+
+            self.isExpanded = true
+
+            self.animateExpansion(
+                panel: panel,
+                contentView: contentView,
+                to: geometry.expandedFrame
+            )
+
+            DispatchQueue.main.asyncAfter(
+                deadline: .now() + self.expansionAnimationDuration
+            ) { [weak self, weak contentView] in
+                guard let self, let contentView, self.isExpanded else { return }
+                contentView.setHubVisible(true)
+            }
+        }
+
+        pendingExpansion = work
+
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + expansionDelay,
+            execute: work
+        )
+    }
+
+    private func scheduleCollapse(
+        panel: NSPanel,
+        contentView: NotchTrackingView,
+        geometry: NotchGeometry
+    ) {
+        guard pendingCollapse == nil else { return }
+
+        cancelExpansion()
+
+        let work = DispatchWorkItem { [weak self, weak panel, weak contentView] in
+            guard let self, let panel, let contentView else { return }
+
+            self.pendingCollapse = nil
+
+            let pointer = NSEvent.mouseLocation
+            guard !panel.frame.contains(pointer) else { return }
+
+            self.isExpanded = false
+            contentView.setHubVisible(false)
+
+            self.animateCollapse(
+                panel: panel,
+                contentView: contentView,
+                to: geometry.collapsedFrame
+            )
+        }
+
+        pendingCollapse = work
+
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + collapseDelay,
+            execute: work
+        )
+    }
+
+    private func cancelExpansion() {
+        pendingExpansion?.cancel()
+        pendingExpansion = nil
+    }
+
+    private func cancelCollapse() {
+        pendingCollapse?.cancel()
+        pendingCollapse = nil
     }
 
     private func animateExpansion(
         panel: NSPanel,
         contentView: NotchTrackingView,
-        to targetFrame: NSRect,
-        cornerRadius: CGFloat
+        to targetFrame: NSRect
     ) {
         NSAnimationContext.runAnimationGroup { context in
             context.duration = expansionAnimationDuration
             context.timingFunction = CAMediaTimingFunction(name: .easeOut)
 
             panel.animator().setFrame(targetFrame, display: true)
-            contentView.layer?.cornerRadius = cornerRadius
+            contentView.layer?.cornerRadius = 18
         }
     }
 
     private func animateCollapse(
         panel: NSPanel,
         contentView: NotchTrackingView,
-        to targetFrame: NSRect,
-        cornerRadius: CGFloat
+        to targetFrame: NSRect
     ) {
         NSAnimationContext.runAnimationGroup { context in
             context.duration = collapseAnimationDuration
             context.timingFunction = CAMediaTimingFunction(name: .easeIn)
 
             panel.animator().setFrame(targetFrame, display: true)
-            contentView.layer?.cornerRadius = cornerRadius
+            contentView.layer?.cornerRadius = 10
         }
     }
 }

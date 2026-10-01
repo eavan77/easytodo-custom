@@ -56,11 +56,7 @@ final class MenuBarManager: NSObject {
 
     private func syncVisibility() {
         guard hasFinishedLaunching else { return }
-        if UserDefaults.standard.bool(forKey: EasyTODOSettings.showMenuBar) {
-            installStatusItem()
-        } else {
-            removeStatusItem()
-        }
+        removeStatusItem()
     }
 
     private func installStatusItem() {

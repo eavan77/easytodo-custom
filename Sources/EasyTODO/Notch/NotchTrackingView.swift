@@ -1,10 +1,13 @@
 import AppKit
+import SwiftData
+import SwiftUI
 
 final class NotchTrackingView: NSView {
     var onMouseEntered: (() -> Void)?
     var onMouseExited: (() -> Void)?
 
     private var trackingArea: NSTrackingArea?
+    private var hubHostingView: NSHostingView<AnyView>?
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
@@ -14,7 +17,7 @@ final class NotchTrackingView: NSView {
         }
 
         let area = NSTrackingArea(
-            rect: bounds,
+            rect: .zero,
             options: [
                 .mouseEnteredAndExited,
                 .activeAlways,
@@ -26,6 +29,32 @@ final class NotchTrackingView: NSView {
 
         addTrackingArea(area)
         trackingArea = area
+    }
+
+    override func layout() {
+        super.layout()
+        hubHostingView?.frame = bounds
+    }
+
+    func installHub(modelContainer: ModelContainer) {
+        guard hubHostingView == nil else { return }
+
+        let rootView = AnyView(
+            HubView()
+                .modelContainer(modelContainer)
+        )
+
+        let hostingView = NSHostingView(rootView: rootView)
+        hostingView.frame = bounds
+        hostingView.autoresizingMask = [.width, .height]
+        hostingView.isHidden = true
+
+        addSubview(hostingView)
+        hubHostingView = hostingView
+    }
+
+    func setHubVisible(_ visible: Bool) {
+        hubHostingView?.isHidden = !visible
     }
 
     override func mouseEntered(with event: NSEvent) {

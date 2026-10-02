@@ -108,6 +108,8 @@ cat > "$INFO_PLIST" <<PLIST
     <string>14.0</string>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>EasyTODO reads your calendars to show special events alongside your weekly school timetable.</string>
     <key>NSSupportsAutomaticGraphicsSwitching</key>
     <true/>
 </dict>

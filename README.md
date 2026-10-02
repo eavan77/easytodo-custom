@@ -102,6 +102,56 @@ swift test
 swift run EasyTODO
 ```
 
+Calendar in the Notch Hub shows a Sunday–Saturday school week, with an EasyTODO-owned
+recurring timetable and Semester 1 school-day overrides. Special events come from
+macOS Calendar, including Google accounts already connected there. To test calendar
+permission, run `./scripts/package_app.sh`, quit any running EasyTODO instance,
+and open `dist/EasyTODO.app`. The generated app's Info.plist contains the required
+calendar privacy description; the unbundled `swift run` executable cannot request
+calendar access. In Calendar, right-click Today → External calendars… → Allow
+Calendar Access. External events are read-only and refresh on calendar changes,
+app activation, day/time-zone changes, wake, week navigation, or Today; there is no
+polling timer. Chevrons beside the weekday header switch weeks; horizontal trackpad
+swipes also navigate. Today and + stay fixed beneath the scrolling schedule.
+
+Use + to add a local special event with a title, date, all-day or start time,
+optional same-day end time, and an optional live TaskCategory. These events persist
+in SwiftData alongside the app's other data, never in EventKit or the recurring
+timetable. Local and external events merge only for weekly presentation. Categories
+are stored by UUID and use the current category color; deleted categories fall back
+to neutral styling.
+
+The timetable seed is centralized in `Models/SchoolCalendar/SchoolTimetable.swift`;
+school-day rules and confirmed holidays live in `SchoolCalendar.swift`. Periods
+preserve order and lunch placement but are not displayed. Winter holiday starts
+January 25, 2027; this configuration remains Semester 1 and does not infer Semester 2.
+No pending dates are seeded. Explicit pending dates show a warning for the displayed
+week or next 14 days, with Normal school / No school / replacement-weekday actions.
+
+Hover a school-day weekday/date header to reveal Mark as no school. The compact
+action stays inside the Notch and saves a personal no-school override. Hover that
+header again to reveal Restore school calendar, which deletes the personal override
+and restores the original weekday or replacement timetable. Base holidays and
+pending dates have no hover action; pending dates keep their warning/resolution
+flow. Replacement-weekday capabilities remain available through the underlying API. Removing a personal record restores the base status, including
+holidays, replacement weekdays, or unresolved pending dates. Personal choices and pending
+resolutions share one SwiftData `SchoolStatusOverride` record per civil date; older
+saved resolutions migrate automatically. Pending base dates remain separate. The
+reusable `SchoolScheduleStore.effectiveSchoolStatus(for:calendar:)` API applies
+personal choice first, then the base calendar. Special events remain visible on
+no-school dates, and no planner capacity changes are made.
+
+School lunch clock hours have not been supplied. Right-click Today → Lunch settings…
+for automatic special-event placement, or right-click a timed event and
+choose Place event → Lunch. Any lunch event expands one shared band across the week;
+otherwise lunch is a thin separator. All-day events and events without a known
+placement stay in a separate band. Right-click an event to map it to any current
+TaskCategory; unmapped or deleted categories use neutral styling. Mappings are per
+EventKit occurrence and may need reassignment if macOS replaces its identifiers.
+Timetable customizations, base pending dates, lunch hours, and mappings persist in
+the separate `EasyTODO.schoolSchedule.semester1.v1` preferences record. None of these
+settings or EventKit events change DDL planner capacity.
+
 If an older debug app is already running, stop it first, then start again:
 
 ```sh

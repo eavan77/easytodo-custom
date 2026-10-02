@@ -5,6 +5,8 @@ enum PersistenceController {
     static let schema = Schema([
         TodoTask.self,
         TaskCategory.self,
+        CalendarSpecialEvent.self,
+        SchoolStatusOverride.self,
         WorkBlock.self,
         TaskBlockDefinition.self,
         DayCapacityTemplate.self,

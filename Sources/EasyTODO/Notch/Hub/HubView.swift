@@ -54,11 +54,7 @@ struct HubView: View {
             DDLModuleView()
 
         case .calendar:
-            placeholder(
-                title: "Calendar",
-                symbol: "calendar",
-                subtitle: "Calendar glance"
-            )
+            CalendarModuleView()
 
         case .music:
             placeholder(
